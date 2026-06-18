@@ -216,22 +216,30 @@ class RiskAssessment(models.Model):
             start_time__date__lte=assess_date,
             start_time__date__gte=assess_date - timedelta(days=3)
         ).order_by('-start_time').first()
-        if not recent_vent:
-            return 1.2
-        duration = recent_vent.get_duration_hours()
-        if duration is None:
-            return 0.9
-        if recent_vent.ventilation_type == 'mechanical':
-            if duration >= 4:
-                return 0.6
-            elif duration >= 2:
-                return 0.7
+
+        if recent_vent:
+            duration = recent_vent.get_duration_hours()
+            if duration is None:
+                return 0.9
+            if recent_vent.ventilation_type == 'mechanical':
+                if duration >= 4:
+                    return 0.6
+                elif duration >= 2:
+                    return 0.7
+                else:
+                    return 0.85
             else:
-                return 0.85
+                if duration >= 8:
+                    return 0.7
+                elif duration >= 4:
+                    return 0.8
+                else:
+                    return 0.95
+
+        status = granary.ventilation_status
+        if status == 'mechanical':
+            return 0.8
+        elif status == 'natural':
+            return 0.95
         else:
-            if duration >= 8:
-                return 0.7
-            elif duration >= 4:
-                return 0.8
-            else:
-                return 0.95
+            return 1.2

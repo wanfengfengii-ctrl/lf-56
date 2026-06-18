@@ -18,7 +18,7 @@ from .forms import (
     GrainTypeForm, GranaryForm, TemperatureHumidityLogForm,
     VentilationLogForm, PestInspectionForm, RiskProcessForm
 )
-from .services import RiskCalculator, recalculate_risks_after_ventilation
+from .services import RiskCalculator, recalculate_risks_after_ventilation, recalculate_risks_for_granary
 
 
 def dashboard(request):
@@ -76,6 +76,7 @@ def dashboard(request):
         'recent_logs': recent_logs,
         'recent_ventilations': recent_ventilations,
         'recent_pests': recent_pests,
+        'granaries': granaries,
         'today': today,
     })
 
@@ -338,8 +339,18 @@ class GranaryUpdateView(UpdateView):
     success_url = reverse_lazy('granary_list')
 
     def form_valid(self, form):
-        messages.success(self.request, '粮仓更新成功')
-        return super().form_valid(form)
+        old_vent = Granary.objects.get(pk=self.object.pk).ventilation_status
+        response = super().form_valid(form)
+        new_vent = self.object.ventilation_status
+        if old_vent != new_vent:
+            try:
+                recalculate_risks_for_granary(self.object)
+                messages.success(self.request, '粮仓更新成功，通风状态已变更，风险评分已重新计算')
+            except Exception:
+                messages.success(self.request, '粮仓更新成功，通风状态已变更，但风险评分重算失败')
+        else:
+            messages.success(self.request, '粮仓更新成功')
+        return response
 
 
 class GranaryDeleteView(DeleteView):
@@ -475,9 +486,9 @@ class VentilationLogCreateView(CreateView):
         response = super().form_valid(form)
         try:
             recalculate_risks_after_ventilation(self.object)
-        except Exception:
-            pass
-        messages.success(self.request, '通风记录添加成功，风险评分已重新计算')
+            messages.success(self.request, '通风记录添加成功，风险评分已重新计算')
+        except Exception as e:
+            messages.success(self.request, f'通风记录添加成功，但风险评分重算失败: {e}')
         return response
 
 
@@ -491,9 +502,9 @@ class VentilationLogUpdateView(UpdateView):
         response = super().form_valid(form)
         try:
             recalculate_risks_after_ventilation(self.object)
-        except Exception:
-            pass
-        messages.success(self.request, '通风记录更新成功，风险评分已重新计算')
+            messages.success(self.request, '通风记录更新成功，风险评分已重新计算')
+        except Exception as e:
+            messages.success(self.request, f'通风记录更新成功，但风险评分重算失败: {e}')
         return response
 
 

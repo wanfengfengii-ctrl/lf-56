@@ -66,6 +66,9 @@
                 <h5 class="mb-0"><i class="bi bi-graph-up me-2 text-primary"></i>风险趋势曲线</h5>
                 <select id="trendGranary" class="form-select form-select-sm w-auto">
                     <option value="all">全部粮仓</option>
+                    {% for g in granaries %}
+                    <option value="{{ g.id }}">{{ g.code }} - {{ g.name }}</option>
+                    {% endfor %}
                 </select>
             </div>
             <canvas id="trendChart" height="200"></canvas>
@@ -79,6 +82,9 @@
             <h5 class="mb-3"><i class="bi bi-thermometer-half me-2 text-primary"></i>温湿度变化趋势</h5>
             <select id="thGranary" class="form-select form-select-sm w-auto mb-3">
                 <option value="">请选择粮仓</option>
+                {% for g in granaries %}
+                <option value="{{ g.id }}">{{ g.code }} - {{ g.name }}</option>
+                {% endfor %}
             </select>
             <canvas id="thChart" height="180"></canvas>
         </div>
@@ -199,11 +205,6 @@
 
 {% block extra_js %}
 <script>
-function loadGranaryOptions() {
-    const selects = [document.getElementById('trendGranary'), document.getElementById('thGranary')];
-    fetch('/api/risk-trend/?days=1').then(r => r.json()).then(() => {});
-}
-
 fetch('{% url "api_risk_ranking" %}').then(r => r.json()).then(data => {
     new Chart(document.getElementById('rankingChart'), {
         type: 'bar',
@@ -221,14 +222,6 @@ fetch('{% url "api_risk_ranking" %}').then(r => r.json()).then(data => {
             plugins: { legend: { position: 'bottom' } }
         }
     });
-
-    if (data.labels && data.labels.length) {
-        const trendSel = document.getElementById('trendGranary');
-        const thSel = document.getElementById('thGranary');
-        data.labels.forEach(l => {
-            const o1 = document.createElement('option'); o1.value = o1.textContent = l;
-        });
-    }
 });
 
 function loadTrendChart(granaryId) {

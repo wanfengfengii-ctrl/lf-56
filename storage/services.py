@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 from .models import (
     GrainType, Granary, TemperatureHumidityLog,
     VentilationLog, PestInspection, RiskAssessment
@@ -181,26 +181,43 @@ class RiskCalculator:
 
 def recalculate_risks_after_ventilation(ventilation_log):
     granary = ventilation_log.granary
-    end_date = ventilation_log.end_time.date() if ventilation_log.end_time else ventilation_log.start_time.date()
+    recalculate_risks_for_granary(granary)
 
-    existing = RiskAssessment.objects.filter(
-        granary=granary,
-        assess_date__gte=end_date - timedelta(days=3),
-        assess_date__lte=end_date
-    )
 
-    for assessment in existing:
-        mold_score, _ = RiskCalculator.calculate_mold_risk(granary, assessment.assess_date)
-        pest_score = RiskCalculator.calculate_pest_risk(granary, assessment.assess_date)
-        ventilation_factor = RiskAssessment.calculate_ventilation_factor(granary, assessment.assess_date)
-        overall_score = RiskCalculator.calculate_overall_risk(mold_score, pest_score)
-        risk_level = RiskCalculator.determine_risk_level(overall_score)
+def recalculate_risks_for_granary(granary, days=30):
+    from django.utils import timezone as tz
+    today = date.today()
+    start_date = today - timedelta(days=days - 1)
 
-        assessment.mold_risk_score = mold_score
-        assessment.pest_risk_score = pest_score
-        assessment.ventilation_factor = ventilation_factor
-        assessment.overall_risk_score = overall_score
-        assessment.risk_level = risk_level
-        assessment.save()
+    all_dates = [start_date + timedelta(days=i) for i in range(days)]
 
-    return existing.count()
+    existing_map = {}
+    for ra in RiskAssessment.objects.filter(granary=granary, assess_date__gte=start_date, assess_date__lte=today):
+        existing_map[ra.assess_date] = ra
+
+    updated = 0
+    created = 0
+    for d in all_dates:
+        has_th = TemperatureHumidityLog.objects.filter(granary=granary, record_date__lte=d).exists()
+        has_pest = PestInspection.objects.filter(granary=granary, inspect_date__lte=d).exists()
+        if not has_th and not has_pest:
+            continue
+
+        assess = RiskCalculator.assess_granary(granary, d)
+
+        if d in existing_map:
+            existing = existing_map[d]
+            existing.mold_risk_score = assess.mold_risk_score
+            existing.pest_risk_score = assess.pest_risk_score
+            existing.ventilation_factor = assess.ventilation_factor
+            existing.overall_risk_score = assess.overall_risk_score
+            existing.risk_level = assess.risk_level
+            existing.is_formal = assess.is_formal
+            existing.consecutive_days = assess.consecutive_days
+            existing.save()
+            updated += 1
+        else:
+            assess.save()
+            created += 1
+
+    return updated, created
