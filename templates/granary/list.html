@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+{% block title %}粮仓管理{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-building me-2"></i>粮仓管理</h3>
+    <a href="{% url 'granary_create' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>新增粮仓</a>
+</div>
+<div class="card stat-card mb-3 p-3">
+    <form method="get" class="row g-2 align-items-center">
+        <div class="col-md-5">
+            <input type="text" name="q" class="form-control" placeholder="搜索编号或名称..." value="{{ query }}">
+        </div>
+        <div class="col-md-2">
+            <button class="btn btn-outline-primary w-100"><i class="bi bi-search me-1"></i>搜索</button>
+        </div>
+        {% if query %}
+        <div class="col-md-2"><a href="{% url 'granary_list' %}" class="btn btn-outline-secondary w-100">清除</a></div>
+        {% endif %}
+    </form>
+</div>
+<div class="card stat-card">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead>
+            <tr>
+                <th>编号</th>
+                <th>名称</th>
+                <th>储粮种类</th>
+                <th>容量/库存(吨)</th>
+                <th>通风状态</th>
+                <th>位置</th>
+                <th>状态</th>
+                <th>操作</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for g in granaries %}
+            <tr>
+                <td class="fw-bold text-primary">{{ g.code }}</td>
+                <td>{{ g.name }}</td>
+                <td><span class="badge bg-info">{{ g.grain_type.name }}</span></td>
+                <td>{{ g.current_stock }} / {{ g.capacity }}</td>
+                <td>
+                    {% if g.ventilation_status == 'closed' %}
+                        <span class="badge bg-secondary">关闭</span>
+                    {% elif g.ventilation_status == 'natural' %}
+                        <span class="badge bg-success">自然通风</span>
+                    {% else %}
+                        <span class="badge bg-primary">机械通风</span>
+                    {% endif %}
+                </td>
+                <td class="small text-muted">{{ g.location|default:'-' }}</td>
+                <td>{% if g.is_active %}<span class="badge bg-success">启用</span>{% else %}<span class="badge bg-secondary">停用</span>{% endif %}</td>
+                <td>
+                    <a href="{% url 'granary_detail' g.pk %}" class="btn btn-sm btn-outline-info me-1" title="详情"><i class="bi bi-eye"></i></a>
+                    <a href="{% url 'granary_update' g.pk %}" class="btn btn-sm btn-outline-primary me-1" title="编辑"><i class="bi bi-pencil"></i></a>
+                    <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#delModal{{ g.pk }}" title="删除"><i class="bi bi-trash"></i></button>
+                    <div class="modal fade" id="delModal{{ g.pk }}" tabindex="-1">
+                        <div class="modal-dialog"><div class="modal-content">
+                            <div class="modal-header"><h5 class="modal-title">确认删除</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+                            <div class="modal-body">确定要删除粮仓「{{ g.code }} - {{ g.name }}」吗？关联数据也将被删除。</div>
+                            <div class="modal-footer">
+                                <button class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                                <form method="post" action="{% url 'granary_delete' g.pk %}">{% csrf_token %}<button class="btn btn-danger">确认删除</button></form>
+                            </div>
+                        </div></div>
+                    </div>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="8" class="text-center text-muted py-5">暂无粮仓数据，点击右上角新增</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

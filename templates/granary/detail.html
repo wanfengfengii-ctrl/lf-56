@@ -1,0 +1,181 @@
+{% extends 'base.html' %}
+{% block title %}粮仓详情 - {{ granary.code }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-building me-2"></i>粮仓详情：{{ granary.code }} - {{ granary.name }}</h3>
+    <div>
+        <a href="{% url 'granary_update' granary.pk %}" class="btn btn-primary me-1"><i class="bi bi-pencil me-1"></i>编辑</a>
+        <a href="{% url 'granary_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回列表</a>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-4 mb-3">
+        <div class="card stat-card p-4">
+            <h6 class="text-muted mb-3">基础信息</h6>
+            <table class="table table-borderless small mb-0">
+                <tr><th class="text-muted">粮仓编号</th><td class="fw-bold text-primary">{{ granary.code }}</td></tr>
+                <tr><th class="text-muted">粮仓名称</th><td>{{ granary.name }}</td></tr>
+                <tr><th class="text-muted">储粮种类</th><td><span class="badge bg-info">{{ granary.grain_type.name }}</span></td></tr>
+                <tr><th class="text-muted">设计容量</th><td>{{ granary.capacity }} 吨</td></tr>
+                <tr><th class="text-muted">当前库存</th><td>{{ granary.current_stock }} 吨</td></tr>
+                <tr><th class="text-muted">通风状态</th><td>
+                    {% if granary.ventilation_status == 'closed' %}<span class="badge bg-secondary">关闭</span>
+                    {% elif granary.ventilation_status == 'natural' %}<span class="badge bg-success">自然通风</span>
+                    {% else %}<span class="badge bg-primary">机械通风</span>{% endif %}
+                </td></tr>
+                <tr><th class="text-muted">位置</th><td>{{ granary.location|default:'-' }}</td></tr>
+                <tr><th class="text-muted">连续监测</th><td>{{ consecutive_days }} 天 {% if has_continuous %}<i class="bi bi-check-circle-fill text-success"></i>{% else %}<span class="text-warning small">(不足3天)</span>{% endif %}</td></tr>
+            </table>
+        </div>
+    </div>
+    <div class="col-md-8 mb-3">
+        <div class="card stat-card p-4">
+            <h6 class="text-muted mb-3">最新风险评估</h6>
+            {% if latest_risk %}
+            <div class="row">
+                <div class="col-md-4 text-center">
+                    <div class="display-6 fw-bold {% if latest_risk.risk_level == 'high' %}text-danger{% elif latest_risk.risk_level == 'medium' %}text-warning{% else %}text-success{% endif %}">
+                        {{ latest_risk.overall_risk_score }}
+                    </div>
+                    <div class="small text-muted">综合评分</div>
+                    <div class="mt-2">
+                        <span class="risk-badge risk-{{ latest_risk.risk_level }}">{{ latest_risk.get_risk_level_display }}</span>
+                        {% if not latest_risk.is_formal %}<span class="informal-tag">非正式</span>{% endif %}
+                    </div>
+                </div>
+                <div class="col-md-8">
+                    <div class="mb-2">
+                        <div class="d-flex justify-content-between small mb-1"><span>霉变风险</span><span class="fw-bold">{{ latest_risk.mold_risk_score }}</span></div>
+                        <div class="progress"><div class="progress-bar bg-primary" style="width:{{ latest_risk.mold_risk_score }}%"></div></div>
+                    </div>
+                    <div class="mb-2">
+                        <div class="d-flex justify-content-between small mb-1"><span>虫害扩散风险</span><span class="fw-bold">{{ latest_risk.pest_risk_score }}</span></div>
+                        <div class="progress"><div class="progress-bar bg-success" style="width:{{ latest_risk.pest_risk_score }}%"></div></div>
+                    </div>
+                    <div class="row small mt-3">
+                        <div class="col-md-4">评估日期：{{ latest_risk.assess_date }}</div>
+                        <div class="col-md-4">通风系数：{{ latest_risk.ventilation_factor }}</div>
+                        <div class="col-md-4">状态：
+                            {% if latest_risk.status == 'pending' %}<span class="badge status-pending">待处理</span>
+                            {% else %}<span class="badge status-processed">已处理</span>{% endif %}
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <a href="{% url 'risk_detail' latest_risk.pk %}" class="btn btn-sm btn-outline-info me-1">查看详情</a>
+                        {% if latest_risk.status == 'pending' %}
+                        <a href="{% url 'risk_process' latest_risk.pk %}" class="btn btn-sm btn-outline-primary">处置</a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="text-center text-muted py-5">暂无风险评估数据，请先录入温湿度或虫害数据</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="card stat-card mb-4">
+    <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+        <h6 class="mb-0"><i class="bi bi-thermometer-half me-1"></i>温湿度记录（最近14条）</h6>
+        <a href="{% url 'th_log_create' %}" class="btn btn-sm btn-primary"><i class="bi bi-plus me-1"></i>新增记录</a>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+            <thead><tr><th>日期</th><th>温度(℃)</th><th>湿度(%)</th><th>记录人</th><th>备注</th></tr></thead>
+            <tbody>
+            {% for log in th_logs %}
+            <tr>
+                <td>{{ log.record_date }}</td>
+                <td>{{ log.temperature }}</td>
+                <td>{{ log.humidity }}</td>
+                <td>{{ log.recorder|default:'-' }}</td>
+                <td class="small text-muted">{{ log.remark|default:'-' }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5" class="text-center text-muted py-4">暂无温湿度记录</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6 mb-3">
+        <div class="card stat-card">
+            <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="bi bi-fan me-1"></i>通风记录（最近10条）</h6>
+                <a href="{% url 'ventilation_create' %}" class="btn btn-sm btn-primary"><i class="bi bi-plus me-1"></i>新增</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead><tr><th>类型</th><th>开始时间</th><th>时长(小时)</th><th>操作人</th></tr></thead>
+                    <tbody>
+                    {% for v in vent_logs %}
+                    <tr>
+                        <td>{{ v.get_ventilation_type_display }}</td>
+                        <td class="small">{{ v.start_time|date:'Y-m-d H:i' }}</td>
+                        <td>{{ v.get_duration_hours|default:'进行中' }}</td>
+                        <td>{{ v.operator|default:'-' }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4" class="text-center text-muted py-4">暂无通风记录</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 mb-3">
+        <div class="card stat-card">
+            <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="bi bi-bug-fill me-1"></i>虫害抽检（最近10条）</h6>
+                <a href="{% url 'pest_create' %}" class="btn btn-sm btn-primary"><i class="bi bi-plus me-1"></i>新增</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead><tr><th>日期</th><th>密度(头/kg)</th><th>虫害种类</th><th>取样点</th></tr></thead>
+                    <tbody>
+                    {% for p in pest_logs %}
+                    <tr>
+                        <td>{{ p.inspect_date }}</td>
+                        <td class="{% if p.pest_density >= 5 %}text-danger fw-bold{% endif %}">{{ p.pest_density }}</td>
+                        <td class="small">{{ p.pest_type|default:'-' }}</td>
+                        <td>{{ p.sample_points }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4" class="text-center text-muted py-4">暂无虫害抽检记录</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card stat-card">
+    <div class="card-header bg-white border-bottom"><h6 class="mb-0"><i class="bi bi-graph-up me-1"></i>历史风险评估（最近14条）</h6></div>
+    <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+            <thead><tr><th>评估日期</th><th>综合分</th><th>霉变</th><th>虫害</th><th>通风系数</th><th>等级</th><th>结论</th><th>操作</th></tr></thead>
+            <tbody>
+            {% for r in risk_assessments %}
+            <tr>
+                <td>{{ r.assess_date }}</td>
+                <td class="fw-bold">{{ r.overall_risk_score }}</td>
+                <td>{{ r.mold_risk_score }}</td>
+                <td>{{ r.pest_risk_score }}</td>
+                <td>{{ r.ventilation_factor }}</td>
+                <td><span class="risk-badge risk-{{ r.risk_level }}">{{ r.get_risk_level_display }}</span></td>
+                <td>{% if r.is_formal %}<span class="badge bg-success">正式</span>{% else %}<span class="badge bg-info">临时</span>{% endif %}</td>
+                <td><a href="{% url 'risk_detail' r.pk %}" class="btn btn-sm btn-outline-info">详情</a></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="8" class="text-center text-muted py-4">暂无风险评估记录</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

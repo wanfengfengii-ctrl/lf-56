@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+{% block title %}风险评估管理{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-exclamation-triangle-fill me-2"></i>风险评估管理</h3>
+    <form method="post" action="{% url 'risk_generate' %}" class="d-inline-flex align-items-center gap-2">
+        {% csrf_token %}
+        <input type="date" name="assess_date" class="form-control form-control-sm" value="{{ today|date:'Y-m-d' }}" style="width:auto;">
+        <button class="btn btn-primary"><i class="bi bi-calculator me-1"></i>生成/更新风险评估</button>
+    </form>
+</div>
+<div class="card stat-card mb-3 p-3">
+    <form method="get" class="row g-2 align-items-center">
+        <div class="col-md-2">
+            <select name="level" class="form-select">
+                <option value="">全部等级</option>
+                <option value="high" {% if selected_level == 'high' %}selected{% endif %}>高风险</option>
+                <option value="medium" {% if selected_level == 'medium' %}selected{% endif %}>中风险</option>
+                <option value="low" {% if selected_level == 'low' %}selected{% endif %}>低风险</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select name="status" class="form-select">
+                <option value="">全部状态</option>
+                <option value="pending" {% if selected_status == 'pending' %}selected{% endif %}>待处理</option>
+                <option value="processed" {% if selected_status == 'processed' %}selected{% endif %}>已处理</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <button class="btn btn-outline-primary w-100"><i class="bi bi-funnel me-1"></i>筛选</button>
+        </div>
+        <div class="col-md-2">
+            <a href="{% url 'risk_list' %}" class="btn btn-outline-secondary w-100">清除</a>
+        </div>
+    </form>
+</div>
+<div class="alert alert-info small mb-3">
+    <i class="bi bi-info-circle me-1"></i>
+    <strong>说明：</strong>连续监测不足3天时风险结论为「非正式」（仅供参考）；高风险粮仓标记已处理时必须填写处置建议。
+</div>
+<div class="card stat-card">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead>
+            <tr>
+                <th>评估日期</th>
+                <th>粮仓</th>
+                <th>综合分</th>
+                <th>霉变</th>
+                <th>虫害</th>
+                <th>通风系数</th>
+                <th>连续监测</th>
+                <th>等级</th>
+                <th>结论</th>
+                <th>处理状态</th>
+                <th>操作</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for a in assessments %}
+            <tr>
+                <td>{{ a.assess_date }}</td>
+                <td><a href="{% url 'granary_detail' a.granary_id %}" class="fw-bold">{{ a.granary.code }}</a></td>
+                <td class="fw-bold">
+                    <span class="{% if a.risk_level == 'high' %}text-danger{% elif a.risk_level == 'medium' %}text-warning{% else %}text-success{% endif %}">
+                        {{ a.overall_risk_score }}
+                    </span>
+                </td>
+                <td>{{ a.mold_risk_score }}</td>
+                <td>{{ a.pest_risk_score }}</td>
+                <td>{{ a.ventilation_factor }}</td>
+                <td>{{ a.consecutive_days }} 天</td>
+                <td>
+                    <span class="risk-badge risk-{{ a.risk_level }}">{{ a.get_risk_level_display }}</span>
+                </td>
+                <td>
+                    {% if a.is_formal %}<span class="badge bg-success">正式</span>
+                    {% else %}<span class="badge bg-secondary">非正式</span>{% endif %}
+                </td>
+                <td>
+                    {% if a.status == 'pending' %}<span class="badge status-pending">待处理</span>
+                    {% else %}<span class="badge status-processed">已处理</span>{% endif %}
+                </td>
+                <td>
+                    <a href="{% url 'risk_detail' a.pk %}" class="btn btn-sm btn-outline-info me-1" title="详情"><i class="bi bi-eye"></i></a>
+                    {% if a.status == 'pending' %}
+                    <a href="{% url 'risk_process' a.pk %}" class="btn btn-sm btn-outline-primary" title="处置"><i class="bi bi-clipboard-check"></i></a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="11" class="text-center text-muted py-5">暂无风险评估数据，请点击「生成/更新风险评估」按钮</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if is_paginated %}
+    <div class="card-footer bg-white border-top">
+        <nav><ul class="pagination pagination-sm mb-0">
+            {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">上一页</a></li>{% endif %}
+            <li class="page-item disabled"><span class="page-link">第 {{ page_obj.number }} / {{ paginator.num_pages }} 页</span></li>
+            {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">下一页</a></li>{% endif %}
+        </ul></nav>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

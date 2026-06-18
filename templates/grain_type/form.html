@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+{% block title %}{% if object %}编辑{% else %}新增{% endif %}粮食品类{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-bag-fill me-2"></i>{% if object %}编辑{% else %}新增{% endif %}粮食品类</h3>
+    <a href="{% url 'grain_type_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</a>
+</div>
+<div class="card stat-card p-4">
+    <form method="post" novalidate>
+        {% csrf_token %}
+        {% if form.non_field_errors %}
+            <div class="alert alert-danger">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>
+        {% endif %}
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label class="form-label">{{ form.name.label }} <span class="text-danger">*</span></label>
+                {{ form.name }}
+                {% if form.name.errors %}<div class="text-danger small mt-1">{{ form.name.errors.0 }}</div>{% endif %}
+            </div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-md-3">
+                <label class="form-label">{{ form.safe_temp_min.label }}</label>
+                {{ form.safe_temp_min }}
+                {% if form.safe_temp_min.errors %}<div class="text-danger small mt-1">{{ form.safe_temp_min.errors.0 }}</div>{% endif %}
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">{{ form.safe_temp_max.label }}</label>
+                {{ form.safe_temp_max }}
+                {% if form.safe_temp_max.errors %}<div class="text-danger small mt-1">{{ form.safe_temp_max.errors.0 }}</div>{% endif %}
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">{{ form.safe_humidity_min.label }}</label>
+                {{ form.safe_humidity_min }}
+                {% if form.safe_humidity_min.errors %}<div class="text-danger small mt-1">{{ form.safe_humidity_min.errors.0 }}</div>{% endif %}
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">{{ form.safe_humidity_max.label }}</label>
+                {{ form.safe_humidity_max }}
+                {% if form.safe_humidity_max.errors %}<div class="text-danger small mt-1">{{ form.safe_humidity_max.errors.0 }}</div>{% endif %}
+            </div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-md-3">
+                <label class="form-label">{{ form.mold_sensitivity.label }}</label>
+                {{ form.mold_sensitivity }}
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">{{ form.pest_sensitivity.label }}</label>
+                {{ form.pest_sensitivity }}
+            </div>
+        </div>
+        <div class="mb-4">
+            <label class="form-label">{{ form.description.label }}</label>
+            {{ form.description }}
+        </div>
+        <button type="submit" class="btn btn-primary px-4"><i class="bi bi-check-lg me-1"></i>保存</button>
+        <a href="{% url 'grain_type_list' %}" class="btn btn-secondary ms-2 px-4">取消</a>
+    </form>
+</div>
+{% endblock %}

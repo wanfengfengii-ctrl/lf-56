@@ -1,0 +1,293 @@
+{% extends 'base.html' %}
+{% block title %}数据总览 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<h3 class="page-title"><i class="bi bi-speedometer2 me-2"></i>数据总览</h3>
+
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">粮仓总数</div>
+                    <div class="fs-2 fw-bold text-primary">{{ total_granaries }}</div>
+                </div>
+                <i class="bi bi-building stat-icon text-primary"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">高风险</div>
+                    <div class="fs-2 fw-bold text-danger">{{ high_count }}</div>
+                </div>
+                <i class="bi bi-exclamation-diamond stat-icon text-danger"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">中风险</div>
+                    <div class="fs-2 fw-bold text-warning">{{ medium_count }}</div>
+                </div>
+                <i class="bi bi-exclamation-circle stat-icon text-warning"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">待处理</div>
+                    <div class="fs-2 fw-bold text-info">{{ pending_count }}</div>
+                </div>
+                <i class="bi bi-clock-history stat-icon text-info"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-7 mb-3">
+        <div class="chart-container">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0"><i class="bi bi-bar-chart-line me-2 text-primary"></i>粮仓风险排行</h5>
+                <a href="{% url 'risk_list' %}" class="btn btn-sm btn-outline-primary">查看全部</a>
+            </div>
+            <canvas id="rankingChart" height="200"></canvas>
+        </div>
+    </div>
+    <div class="col-md-5 mb-3">
+        <div class="chart-container">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0"><i class="bi bi-graph-up me-2 text-primary"></i>风险趋势曲线</h5>
+                <select id="trendGranary" class="form-select form-select-sm w-auto">
+                    <option value="all">全部粮仓</option>
+                </select>
+            </div>
+            <canvas id="trendChart" height="200"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6 mb-3">
+        <div class="chart-container">
+            <h5 class="mb-3"><i class="bi bi-thermometer-half me-2 text-primary"></i>温湿度变化趋势</h5>
+            <select id="thGranary" class="form-select form-select-sm w-auto mb-3">
+                <option value="">请选择粮仓</option>
+            </select>
+            <canvas id="thChart" height="180"></canvas>
+        </div>
+    </div>
+    <div class="col-md-6 mb-3">
+        <div class="card stat-card">
+            <div class="card-header bg-white border-bottom">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-list-ol me-2 text-primary"></i>风险粮仓排名（Top 10）</h5>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                    <tr><th>排名</th><th>粮仓</th><th>综合分</th><th>霉变</th><th>虫害</th><th>等级</th></tr>
+                    </thead>
+                    <tbody>
+                    {% for r in risk_ranking %}
+                    <tr>
+                        <td><span class="badge {% if forloop.counter <= 3 %}bg-danger{% else %}bg-secondary{% endif %}">{{ forloop.counter }}</span></td>
+                        <td><a href="{% url 'granary_detail' r.granary_id %}">{{ r.granary.code }}</a></td>
+                        <td class="fw-bold">{{ r.overall_risk_score }}</td>
+                        <td>{{ r.mold_risk_score }}</td>
+                        <td>{{ r.pest_risk_score }}</td>
+                        <td>
+                            <span class="risk-badge risk-{{ r.risk_level }}">
+                                {{ r.get_risk_level_display }}
+                            </span>
+                            {% if not r.is_formal %}<span class="informal-tag">非正式</span>{% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="6" class="text-center text-muted py-4">暂无风险评估数据，请先录入监测数据</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4 mb-3">
+        <div class="card stat-card">
+            <div class="card-header bg-white border-bottom d-flex justify-content-between">
+                <h6 class="mb-0"><i class="bi bi-thermometer-half me-1"></i>近期温湿度记录</h6>
+                <a href="{% url 'th_log_list' %}" class="text-decoration-none small">更多</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead><tr><th>粮仓</th><th>日期</th><th>温度</th><th>湿度</th></tr></thead>
+                    <tbody>
+                    {% for log in recent_logs %}
+                    <tr>
+                        <td>{{ log.granary.code }}</td>
+                        <td>{{ log.record_date }}</td>
+                        <td>{{ log.temperature }}℃</td>
+                        <td>{{ log.humidity }}%</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="4" class="text-center text-muted py-3 small">暂无数据</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <div class="card stat-card">
+            <div class="card-header bg-white border-bottom d-flex justify-content-between">
+                <h6 class="mb-0"><i class="bi bi-fan me-1"></i>近期通风记录</h6>
+                <a href="{% url 'ventilation_list' %}" class="text-decoration-none small">更多</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead><tr><th>粮仓</th><th>类型</th><th>开始时间</th></tr></thead>
+                    <tbody>
+                    {% for v in recent_ventilations %}
+                    <tr>
+                        <td>{{ v.granary.code }}</td>
+                        <td>{{ v.get_ventilation_type_display }}</td>
+                        <td class="small">{{ v.start_time|date:'m-d H:i' }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="3" class="text-center text-muted py-3 small">暂无数据</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <div class="card stat-card">
+            <div class="card-header bg-white border-bottom d-flex justify-content-between">
+                <h6 class="mb-0"><i class="bi bi-bug-fill me-1"></i>近期虫害抽检</h6>
+                <a href="{% url 'pest_list' %}" class="text-decoration-none small">更多</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead><tr><th>粮仓</th><th>日期</th><th>密度</th></tr></thead>
+                    <tbody>
+                    {% for p in recent_pests %}
+                    <tr>
+                        <td>{{ p.granary.code }}</td>
+                        <td>{{ p.inspect_date }}</td>
+                        <td>{{ p.pest_density }} 头/kg</td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="3" class="text-center text-muted py-3 small">暂无数据</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function loadGranaryOptions() {
+    const selects = [document.getElementById('trendGranary'), document.getElementById('thGranary')];
+    fetch('/api/risk-trend/?days=1').then(r => r.json()).then(() => {});
+}
+
+fetch('{% url "api_risk_ranking" %}').then(r => r.json()).then(data => {
+    new Chart(document.getElementById('rankingChart'), {
+        type: 'bar',
+        data: {
+            labels: data.labels,
+            datasets: [
+                { label: '综合风险', data: data.overall_scores, backgroundColor: data.colors, borderRadius: 6 },
+                { label: '霉变风险', data: data.mold_scores, backgroundColor: 'rgba(13,110,253,0.5)', borderRadius: 6 },
+                { label: '虫害风险', data: data.pest_scores, backgroundColor: 'rgba(25,135,84,0.5)', borderRadius: 6 },
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: { y: { beginAtZero: true, max: 100 } },
+            plugins: { legend: { position: 'bottom' } }
+        }
+    });
+
+    if (data.labels && data.labels.length) {
+        const trendSel = document.getElementById('trendGranary');
+        const thSel = document.getElementById('thGranary');
+        data.labels.forEach(l => {
+            const o1 = document.createElement('option'); o1.value = o1.textContent = l;
+        });
+    }
+});
+
+function loadTrendChart(granaryId) {
+    fetch('/api/risk-trend/?granary_id=' + (granaryId || 'all') + '&days=30').then(r => r.json()).then(data => {
+        if (granaryId && granaryId !== 'all') {
+            const ctx = document.getElementById('trendChart');
+            if (window._trend) window._trend.destroy();
+            window._trend = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.labels,
+                    datasets: [
+                        { label: '综合风险', data: data.overall, borderColor: '#dc3545', backgroundColor: 'rgba(220,53,69,0.1)', fill: true, tension: 0.3, spanGaps: true },
+                        { label: '霉变风险', data: data.mold, borderColor: '#0d6efd', backgroundColor: 'transparent', tension: 0.3, spanGaps: true },
+                        { label: '虫害风险', data: data.pest, borderColor: '#198754', backgroundColor: 'transparent', tension: 0.3, spanGaps: true },
+                    ]
+                },
+                options: { responsive: true, scales: { y: { beginAtZero: true, max: 100 } }, plugins: { legend: { position: 'bottom' } } }
+            });
+        } else {
+            const datasets = data.lines.map(l => ({...l, spanGaps: true}));
+            if (window._trend) window._trend.destroy();
+            window._trend = new Chart(document.getElementById('trendChart'), {
+                type: 'line',
+                data: { labels: data.labels, datasets: datasets },
+                options: { responsive: true, scales: { y: { beginAtZero: true, max: 100 } }, plugins: { legend: { position: 'bottom' } } }
+            });
+        }
+    });
+}
+loadTrendChart('all');
+
+document.getElementById('trendGranary').addEventListener('change', e => loadTrendChart(e.target.value));
+
+function loadThChart(granaryId) {
+    if (!granaryId) return;
+    fetch('/api/temp-humidity/?granary_id=' + granaryId + '&days=30').then(r => r.json()).then(data => {
+        if (window._th) window._th.destroy();
+        window._th = new Chart(document.getElementById('thChart'), {
+            type: 'line',
+            data: {
+                labels: data.labels,
+                datasets: [
+                    { label: '温度(℃)', data: data.temperatures, borderColor: '#fd7e14', backgroundColor: 'rgba(253,126,20,0.1)', fill: true, yAxisID: 'y', tension: 0.3, spanGaps: true },
+                    { label: '湿度(%)', data: data.humidities, borderColor: '#0dcaf0', backgroundColor: 'rgba(13,202,240,0.1)', fill: true, yAxisID: 'y1', tension: 0.3, spanGaps: true },
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: { type: 'linear', position: 'left', title: { display: true, text: '温度(℃)' } },
+                    y1: { type: 'linear', position: 'right', title: { display: true, text: '湿度(%)' }, grid: { drawOnChartArea: false } }
+                },
+                plugins: { legend: { position: 'bottom' } }
+            }
+        });
+    });
+}
+
+document.getElementById('thGranary').addEventListener('change', e => loadThChart(e.target.value));
+</script>
+{% endblock %}

@@ -1,0 +1,114 @@
+{% extends 'base.html' %}
+{% block title %}风险评估详情 - {{ assessment.granary.code }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-exclamation-triangle-fill me-2"></i>风险评估详情</h3>
+    <div>
+        {% if assessment.status == 'pending' %}
+        <a href="{% url 'risk_process' assessment.pk %}" class="btn btn-primary me-1"><i class="bi bi-clipboard-check me-1"></i>处理风险</a>
+        {% endif %}
+        <a href="{% url 'risk_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回列表</a>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-4 mb-3">
+        <div class="card stat-card p-4 text-center">
+            <div class="text-muted small mb-2">综合风险评分</div>
+            <div class="display-4 fw-bold {% if assessment.risk_level == 'high' %}text-danger{% elif assessment.risk_level == 'medium' %}text-warning{% else %}text-success{% endif %}">
+                {{ assessment.overall_risk_score }}
+            </div>
+            <div class="mt-2">
+                <span class="risk-badge risk-{{ assessment.risk_level }}" style="font-size:1rem;padding:6px 16px;">
+                    {{ assessment.get_risk_level_display }}
+                </span>
+                {% if not assessment.is_formal %}<span class="informal-tag ms-2">非正式结论</span>{% endif %}
+            </div>
+            <div class="mt-3">
+                {% if assessment.status == 'pending' %}<span class="badge status-pending" style="font-size:.9rem;">待处理</span>
+                {% else %}<span class="badge status-processed" style="font-size:.9rem;">已处理</span>{% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-8 mb-3">
+        <div class="card stat-card p-4">
+            <h6 class="text-muted mb-3">风险构成分析</h6>
+            <div class="mb-4">
+                <div class="d-flex justify-content-between small mb-1">
+                    <span>霉变风险（权重60%）</span><span class="fw-bold">{{ assessment.mold_risk_score }} 分</span>
+                </div>
+                <div class="progress" style="height:24px;">
+                    <div class="progress-bar bg-primary" style="width:{{ assessment.mold_risk_score }}%;">{{ assessment.mold_risk_score }}</div>
+                </div>
+            </div>
+            <div class="mb-4">
+                <div class="d-flex justify-content-between small mb-1">
+                    <span>虫害扩散风险（权重40%）</span><span class="fw-bold">{{ assessment.pest_risk_score }} 分</span>
+                </div>
+                <div class="progress" style="height:24px;">
+                    <div class="progress-bar bg-success" style="width:{{ assessment.pest_risk_score }}%;">{{ assessment.pest_risk_score }}</div>
+                </div>
+            </div>
+            <div class="row small">
+                <div class="col-md-4">
+                    <div class="text-muted">通风系数</div>
+                    <div class="fw-bold">{{ assessment.ventilation_factor }}</div>
+                    <div class="text-muted small">
+                        {% if assessment.ventilation_factor > 1 %}通风不足，风险放大{% else %}通风良好，风险降低{% endif %}
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="text-muted">连续监测</div>
+                    <div class="fw-bold">{{ assessment.consecutive_days }} 天</div>
+                    <div class="text-muted small">{% if assessment.consecutive_days >= 3 %}数据充足{% else %}数据不足（需≥3天）{% endif %}</div>
+                </div>
+                <div class="col-md-4">
+                    <div class="text-muted">评估日期</div>
+                    <div class="fw-bold">{{ assessment.assess_date }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6 mb-3">
+        <div class="card stat-card p-4">
+            <h6 class="text-muted mb-3"><i class="bi bi-building me-1"></i>关联粮仓信息</h6>
+            <table class="table table-borderless small mb-0">
+                <tr><th class="text-muted">粮仓编号</th><td><a href="{% url 'granary_detail' assessment.granary_id %}" class="fw-bold text-primary">{{ assessment.granary.code }}</a></td></tr>
+                <tr><th class="text-muted">粮仓名称</th><td>{{ assessment.granary.name }}</td></tr>
+                <tr><th class="text-muted">储粮种类</th><td><span class="badge bg-info">{{ assessment.granary.grain_type.name }}</span></td></tr>
+                <tr><th class="text-muted">当前库存</th><td>{{ assessment.granary.current_stock }} / {{ assessment.granary.capacity }} 吨</td></tr>
+                <tr><th class="text-muted">通风状态</th><td>
+                    {% if assessment.granary.ventilation_status == 'closed' %}<span class="badge bg-secondary">关闭</span>
+                    {% elif assessment.granary.ventilation_status == 'natural' %}<span class="badge bg-success">自然通风</span>
+                    {% else %}<span class="badge bg-primary">机械通风</span>{% endif %}
+                </td></tr>
+            </table>
+        </div>
+    </div>
+    <div class="col-md-6 mb-3">
+        <div class="card stat-card p-4">
+            <h6 class="text-muted mb-3"><i class="bi bi-journal-text me-1"></i>处置信息</h6>
+            {% if assessment.status == 'processed' %}
+            <div class="mb-2">
+                <span class="badge status-processed mb-2" style="font-size:.9rem;">已处理</span>
+            </div>
+            <div class="mb-2 small"><strong>处置人：</strong>{{ assessment.disposal_person|default:'-' }}</div>
+            <div class="mb-2 small"><strong>处置日期：</strong>{{ assessment.disposal_date|default:'-' }}</div>
+            <div class="small">
+                <strong>处置建议：</strong>
+                <div class="mt-1 p-3 bg-light rounded">{{ assessment.disposal_suggestion|linebreaksbr }}</div>
+            </div>
+            {% else %}
+            <div class="text-center text-muted py-4">
+                <i class="bi bi-clock-history" style="font-size:3rem;"></i>
+                <div class="mt-2">待处理</div>
+                <a href="{% url 'risk_process' assessment.pk %}" class="btn btn-primary btn-sm mt-3">立即处理</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

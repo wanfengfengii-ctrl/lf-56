@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+{% block title %}风险处置 - {{ assessment.granary.code }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-clipboard-check me-2"></i>风险处置</h3>
+    <div>
+        <a href="{% url 'risk_detail' assessment.pk %}" class="btn btn-outline-info me-1">详情</a>
+        <a href="{% url 'risk_list' %}" class="btn btn-outline-secondary">返回列表</a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-5 mb-3">
+        <div class="card stat-card p-4 mb-3">
+            <h6 class="text-muted mb-3">风险概况</h6>
+            <table class="table table-borderless small mb-0">
+                <tr><th class="text-muted">粮仓</th><td><span class="fw-bold">{{ assessment.granary.code }} - {{ assessment.granary.name }}</span></td></tr>
+                <tr><th class="text-muted">评估日期</th><td>{{ assessment.assess_date }}</td></tr>
+                <tr><th class="text-muted">综合评分</th>
+                    <td><span class="fw-bold {% if assessment.risk_level == 'high' %}text-danger{% elif assessment.risk_level == 'medium' %}text-warning{% else %}text-success{% endif %}">{{ assessment.overall_risk_score }}</span></td>
+                </tr>
+                <tr><th class="text-muted">风险等级</th>
+                    <td><span class="risk-badge risk-{{ assessment.risk_level }}">{{ assessment.get_risk_level_display }}</span></td>
+                </tr>
+                <tr><th class="text-muted">霉变风险</th><td>{{ assessment.mold_risk_score }}</td></tr>
+                <tr><th class="text-muted">虫害风险</th><td>{{ assessment.pest_risk_score }}</td></tr>
+                <tr><th class="text-muted">连续监测</th><td>{{ assessment.consecutive_days }} 天 {% if not assessment.is_formal %}<span class="text-warning small">(非正式)</span>{% endif %}</td></tr>
+            </table>
+        </div>
+        {% if assessment.risk_level == 'high' %}
+        <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+            <strong>高风险提示：</strong>此粮仓为高风险等级，<strong class="text-decoration-underline">必须填写处置建议</strong>才能标记为已处理。
+        </div>
+        {% endif %}
+    </div>
+    <div class="col-md-7 mb-3">
+        <div class="card stat-card p-4">
+            <h6 class="text-muted mb-3">处置信息</h6>
+            <form method="post" novalidate>
+                {% csrf_token %}
+                {% if form.non_field_errors %}<div class="alert alert-danger">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
+                <div class="mb-3">
+                    <label class="form-label">{{ form.status.label }} <span class="text-danger">*</span></label>
+                    {{ form.status }}
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">{{ form.disposal_suggestion.label }}
+                        {% if assessment.risk_level == 'high' %}<span class="text-danger">*</span>{% endif %}
+                    </label>
+                    {{ form.disposal_suggestion }}
+                    {% if form.disposal_suggestion.errors %}<div class="text-danger small mt-1">{{ form.disposal_suggestion.errors.0 }}</div>{% endif %}
+                    <div class="form-text">
+                        {% if assessment.risk_level == 'high' %}高风险粮仓必须填写{% else %}可选{% endif %}。建议内容：通风、降温、除湿、熏蒸、倒仓、取样检测等措施。
+                    </div>
+                </div>
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <label class="form-label">{{ form.disposal_person.label }}</label>
+                        {{ form.disposal_person }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">{{ form.disposal_date.label }}</label>
+                        {{ form.disposal_date }}
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary px-4"><i class="bi bi-check-lg me-1"></i>保存处置</button>
+                <a href="{% url 'risk_detail' assessment.pk %}" class="btn btn-secondary ms-2 px-4">取消</a>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

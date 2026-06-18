@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+{% block title %}温湿度记录{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-thermometer-half me-2"></i>温湿度记录</h3>
+    <a href="{% url 'th_log_create' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>新增记录</a>
+</div>
+<div class="card stat-card mb-3 p-3">
+    <form method="get" class="row g-2 align-items-center">
+        <div class="col-md-3">
+            <select name="granary" class="form-select">
+                <option value="">全部粮仓</option>
+                {% for g in granaries %}
+                <option value="{{ g.id }}" {% if g.id|stringformat:"s" == selected_granary %}selected{% endif %}>{{ g.code }} - {{ g.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <button class="btn btn-outline-primary w-100"><i class="bi bi-funnel me-1"></i>筛选</button>
+        </div>
+    </form>
+</div>
+<div class="card stat-card">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead>
+            <tr>
+                <th>粮仓</th>
+                <th>记录日期</th>
+                <th>温度(℃)</th>
+                <th>湿度(%)</th>
+                <th>记录人</th>
+                <th>备注</th>
+                <th>操作</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for log in logs %}
+            <tr>
+                <td><a href="{% url 'granary_detail' log.granary_id %}" class="fw-bold">{{ log.granary.code }}</a></td>
+                <td>{{ log.record_date }}</td>
+                <td>{{ log.temperature }}</td>
+                <td>{{ log.humidity }}</td>
+                <td>{{ log.recorder|default:'-' }}</td>
+                <td class="small text-muted">{{ log.remark|default:'-' }}</td>
+                <td>
+                    <a href="{% url 'th_log_update' log.pk %}" class="btn btn-sm btn-outline-primary me-1"><i class="bi bi-pencil"></i></a>
+                    <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#delModal{{ log.pk }}"><i class="bi bi-trash"></i></button>
+                    <div class="modal fade" id="delModal{{ log.pk }}" tabindex="-1">
+                        <div class="modal-dialog modal-sm"><div class="modal-content">
+                            <div class="modal-header"><h6 class="modal-title">确认删除</h6><button class="btn-close" data-bs-dismiss="modal"></button></div>
+                            <div class="modal-body small">确定删除 {{ log.granary.code }} {{ log.record_date }} 的记录？</div>
+                            <div class="modal-footer">
+                                <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">取消</button>
+                                <form method="post" action="{% url 'th_log_delete' log.pk %}">{% csrf_token %}<button class="btn btn-danger btn-sm">删除</button></form>
+                            </div>
+                        </div></div>
+                    </div>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7" class="text-center text-muted py-5">暂无温湿度记录数据</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if is_paginated %}
+    <div class="card-footer bg-white border-top">
+        <nav><ul class="pagination pagination-sm mb-0">
+            {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">上一页</a></li>{% endif %}
+            <li class="page-item disabled"><span class="page-link">第 {{ page_obj.number }} / {{ paginator.num_pages }} 页</span></li>
+            {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">下一页</a></li>{% endif %}
+        </ul></nav>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

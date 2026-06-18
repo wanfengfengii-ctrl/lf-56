@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% block title %}确认删除{% endblock %}
+{% block content %}
+<div class="card stat-card p-5 mt-5 mx-auto" style="max-width:500px;">
+    <div class="text-center mb-4">
+        <i class="bi bi-exclamation-triangle-fill text-danger" style="font-size:4rem;"></i>
+        <h4 class="mt-3">确认删除</h4>
+    </div>
+    <div class="alert alert-warning mb-4">
+        <strong>确定要删除：</strong>{{ object }}<br>
+        <small class="text-danger">此操作不可撤销</small>
+    </div>
+    <form method="post" class="text-center">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger px-5 me-2"><i class="bi bi-trash me-1"></i>确认删除</button>
+        <a href="javascript:history.back()" class="btn btn-secondary px-5">取消</a>
+    </form>
+</div>
+{% endblock %}

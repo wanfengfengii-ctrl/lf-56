@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+{% block title %}{% if object %}编辑{% else %}新增{% endif %}粮仓{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-building me-2"></i>{% if object %}编辑{% else %}新增{% endif %}粮仓</h3>
+    <a href="{% url 'granary_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</a>
+</div>
+<div class="card stat-card p-4">
+    <form method="post" novalidate>
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="alert alert-danger">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label class="form-label">{{ form.code.label }} <span class="text-danger">*</span></label>
+                {{ form.code }}
+                {% if form.code.errors %}<div class="text-danger small mt-1">{{ form.code.errors.0 }}</div>{% endif %}
+                <div class="form-text text-danger">编号不能重复</div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">{{ form.name.label }} <span class="text-danger">*</span></label>
+                {{ form.name }}
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">{{ form.grain_type.label }} <span class="text-danger">*</span></label>
+                {{ form.grain_type }}
+            </div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-md-3">
+                <label class="form-label">{{ form.capacity.label }}</label>
+                {{ form.capacity }}
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">{{ form.current_stock.label }}</label>
+                {{ form.current_stock }}
+                {% if form.current_stock.errors %}<div class="text-danger small mt-1">{{ form.current_stock.errors.0 }}</div>{% endif %}
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">{{ form.ventilation_status.label }}</label>
+                {{ form.ventilation_status }}
+            </div>
+            <div class="col-md-3 pt-4">
+                <div class="form-check mt-2">
+                    {{ form.is_active }}
+                    <label class="form-check-label" for="{{ form.is_active.id_for_label }}">{{ form.is_active.label }}</label>
+                </div>
+            </div>
+        </div>
+        <div class="mb-4">
+            <label class="form-label">{{ form.location.label }}</label>
+            {{ form.location }}
+        </div>
+        <button type="submit" class="btn btn-primary px-4"><i class="bi bi-check-lg me-1"></i>保存</button>
+        <a href="{% url 'granary_list' %}" class="btn btn-secondary ms-2 px-4">取消</a>
+    </form>
+</div>
+{% endblock %}

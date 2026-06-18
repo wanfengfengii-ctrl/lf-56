@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}{% if object %}编辑{% else %}新增{% endif %}温湿度记录{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-thermometer-half me-2"></i>{% if object %}编辑{% else %}新增{% endif %}温湿度记录</h3>
+    <a href="{% url 'th_log_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回</a>
+</div>
+<div class="card stat-card p-4">
+    <form method="post" novalidate>
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="alert alert-danger">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>{% endif %}
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label class="form-label">{{ form.granary.label }} <span class="text-danger">*</span></label>
+                {{ form.granary }}
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">{{ form.record_date.label }} <span class="text-danger">*</span></label>
+                {{ form.record_date }}
+                {% if form.record_date.errors %}<div class="text-danger small mt-1">{{ form.record_date.errors.0 }}</div>{% endif %}
+            </div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-md-3">
+                <label class="form-label">{{ form.temperature.label }} <span class="text-danger">*</span></label>
+                {{ form.temperature }}
+                <div class="form-text">合理范围：-40℃ ~ 60℃</div>
+                {% if form.temperature.errors %}<div class="text-danger small mt-1">{{ form.temperature.errors.0 }}</div>{% endif %}
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">{{ form.humidity.label }} <span class="text-danger">*</span></label>
+                {{ form.humidity }}
+                <div class="form-text">合理范围：0% ~ 100%</div>
+                {% if form.humidity.errors %}<div class="text-danger small mt-1">{{ form.humidity.errors.0 }}</div>{% endif %}
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">{{ form.recorder.label }}</label>
+                {{ form.recorder }}
+            </div>
+        </div>
+        <div class="mb-4">
+            <label class="form-label">{{ form.remark.label }}</label>
+            {{ form.remark }}
+        </div>
+        <div class="alert alert-info small">
+            <i class="bi bi-info-circle me-1"></i>保存后系统将自动更新该粮仓的风险评估评分
+        </div>
+        <button type="submit" class="btn btn-primary px-4"><i class="bi bi-check-lg me-1"></i>保存</button>
+        <a href="{% url 'th_log_list' %}" class="btn btn-secondary ms-2 px-4">取消</a>
+    </form>
+</div>
+{% endblock %}
