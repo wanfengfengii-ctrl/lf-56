@@ -13,17 +13,24 @@ import json
 from .models import (
     GrainType, Granary, TemperatureHumidityLog,
     VentilationLog, PestInspection, RiskAssessment,
-    Warning, DisposalTask, DisposalProgressLog
+    Warning, DisposalTask, DisposalProgressLog,
+    InventoryChangeLog, AllocationConfig, AllocationSuggestion,
+    AllocationExecution, GrainSituationPrediction
 )
 from .forms import (
     GrainTypeForm, GranaryForm, TemperatureHumidityLogForm,
     VentilationLogForm, PestInspectionForm, RiskProcessForm,
     WarningCreateForm, DisposalTaskAssignForm, DisposalProgressForm,
-    DisposalSubmitForm, DisposalReviewForm, DisposalArchiveForm, WarningFilterForm
+    DisposalSubmitForm, DisposalReviewForm, DisposalArchiveForm, WarningFilterForm,
+    InventoryChangeLogForm, AllocationConfigForm, AllocationSuggestionForm,
+    AllocationSuggestionApproveForm, AllocationExecutionForm,
+    PredictionGenerateForm, AllocationGenerateForm
 )
 from .services import (
     RiskCalculator, recalculate_risks_after_ventilation, recalculate_risks_for_granary,
-    WarningService, DisposalService, WarningStatisticsService
+    WarningService, DisposalService, WarningStatisticsService,
+    GrainSituationPredictionService, InventoryService, AllocationService,
+    PredictionStatisticsService
 )
 
 
@@ -1004,4 +1011,419 @@ def warning_by_granary_api(request):
         'level2': [d['level2'] for d in data],
         'level3': [d['level3'] for d in data],
         'total': [d['total'] for d in data],
+    })
+
+
+# -------------------- Prediction Views --------------------
+def prediction_dashboard(request):
+    horizon_days = int(request.GET.get('horizon', 7))
+    granary_id = request.GET.get('granary', '')
+
+    overview = PredictionStatisticsService.get_overview_stats(horizon_days)
+    risk_dist = PredictionStatisticsService.get_risk_distribution(horizon_days)
+    inv_dist = PredictionStatisticsService.get_inventory_distribution(horizon_days)
+
+    high_risk_predictions = GrainSituationPredictionService.get_high_risk_predictions(horizon_days)
+    inventory_pressure = GrainSituationPredictionService.get_inventory_pressure_predictions(horizon_days)
+
+    generate_form = PredictionGenerateForm(initial={
+        'horizon_days': horizon_days,
+        'granary': granary_id if granary_id else None,
+    })
+
+    today = date.today()
+    latest_predictions = GrainSituationPrediction.objects.filter(
+        prediction_date=today,
+        horizon_days=horizon_days
+    ).select_related('granary').order_by('-predicted_overall_risk')
+
+    if granary_id and granary_id != 'all':
+        latest_predictions = latest_predictions.filter(granary_id=granary_id)
+
+    granaries = Granary.objects.filter(is_active=True)
+
+    return render(request, 'prediction/dashboard.html', {
+        'overview': overview,
+        'risk_dist': risk_dist,
+        'inv_dist': inv_dist,
+        'high_risk_predictions': high_risk_predictions,
+        'inventory_pressure': inventory_pressure,
+        'generate_form': generate_form,
+        'latest_predictions': latest_predictions,
+        'granaries': granaries,
+        'horizon_days': horizon_days,
+        'selected_granary': granary_id,
+    })
+
+
+def generate_predictions(request):
+    if request.method == 'POST':
+        form = PredictionGenerateForm(request.POST)
+        if form.is_valid():
+            horizon_days = int(form.cleaned_data['horizon_days'])
+            granary = form.cleaned_data['granary']
+            prediction_date = date.today()
+            predictions = GrainSituationPredictionService.predict_all_granaries(
+                prediction_date, horizon_days, granary
+            )
+            count = len(predictions)
+            if granary:
+                messages.success(request, f'成功为粮仓 {granary.code} 生成 {count} 条预测记录（{horizon_days}天）')
+            else:
+                messages.success(request, f'成功为 {count} 个粮仓生成预测记录（{horizon_days}天）')
+    return redirect('prediction_dashboard')
+
+
+def prediction_list(request):
+    horizon_days = int(request.GET.get('horizon', 7))
+    granary_id = request.GET.get('granary', '')
+    risk_level = request.GET.get('risk_level', '')
+
+    queryset = GrainSituationPrediction.objects.select_related('granary')
+
+    if horizon_days:
+        queryset = queryset.filter(horizon_days=horizon_days)
+    if granary_id and granary_id != 'all':
+        queryset = queryset.filter(granary_id=granary_id)
+    if risk_level:
+        queryset = queryset.filter(predicted_risk_level=risk_level)
+
+    return render(request, 'prediction/list.html', {
+        'predictions': queryset[:100],
+        'horizon_days': horizon_days,
+        'selected_granary': granary_id,
+        'selected_risk': risk_level,
+        'granaries': Granary.objects.filter(is_active=True),
+    })
+
+
+def prediction_detail(request, pk):
+    prediction = get_object_or_404(GrainSituationPrediction, pk=pk)
+    granary = prediction.granary
+    history = GrainSituationPrediction.objects.filter(
+        granary=granary,
+        horizon_days=prediction.horizon_days
+    ).select_related('granary').order_by('-prediction_date')[:30]
+
+    return render(request, 'prediction/detail.html', {
+        'prediction': prediction,
+        'granary': granary,
+        'history': history,
+    })
+
+
+# -------------------- Inventory Change Views --------------------
+class InventoryChangeLogListView(ListView):
+    model = InventoryChangeLog
+    template_name = 'inventory/list.html'
+    context_object_name = 'logs'
+    ordering = ['-change_date', '-created_at']
+    paginate_by = 30
+
+    def get_queryset(self):
+        qs = super().get_queryset().select_related('granary', 'grain_type', 'related_allocation')
+        granary_id = self.request.GET.get('granary')
+        change_type = self.request.GET.get('change_type')
+        if granary_id:
+            qs = qs.filter(granary_id=granary_id)
+        if change_type:
+            qs = qs.filter(change_type=change_type)
+        return qs
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['granaries'] = Granary.objects.filter(is_active=True)
+        ctx['selected_granary'] = self.request.GET.get('granary', '')
+        ctx['selected_type'] = self.request.GET.get('change_type', '')
+        return ctx
+
+
+class InventoryChangeLogCreateView(CreateView):
+    model = InventoryChangeLog
+    form_class = InventoryChangeLogForm
+    template_name = 'inventory/form.html'
+    success_url = reverse_lazy('inventory_list')
+
+    def form_valid(self, form):
+        try:
+            log = InventoryService.create_change_log(
+                granary=form.cleaned_data['granary'],
+                change_type=form.cleaned_data['change_type'],
+                quantity=form.cleaned_data['quantity'],
+                grain_type=form.cleaned_data.get('grain_type'),
+                operator=form.cleaned_data.get('operator'),
+                remark=form.cleaned_data.get('remark'),
+            )
+            messages.success(self.request, '库存变动记录创建成功')
+            return redirect(self.success_url)
+        except ValueError as e:
+            messages.error(self.request, str(e))
+            return self.form_invalid(form)
+
+
+# -------------------- Allocation Config Views --------------------
+class AllocationConfigListView(ListView):
+    model = AllocationConfig
+    template_name = 'allocation/config_list.html'
+    context_object_name = 'configs'
+    ordering = ['-is_default', '-created_at']
+
+
+class AllocationConfigCreateView(CreateView):
+    model = AllocationConfig
+    form_class = AllocationConfigForm
+    template_name = 'allocation/config_form.html'
+    success_url = reverse_lazy('allocation_config_list')
+
+    def form_valid(self, form):
+        if form.cleaned_data.get('is_default'):
+            AllocationConfig.objects.update(is_default=False)
+        messages.success(self.request, '调拨配置创建成功')
+        return super().form_valid(form)
+
+
+class AllocationConfigUpdateView(UpdateView):
+    model = AllocationConfig
+    form_class = AllocationConfigForm
+    template_name = 'allocation/config_form.html'
+    success_url = reverse_lazy('allocation_config_list')
+
+    def form_valid(self, form):
+        if form.cleaned_data.get('is_default'):
+            AllocationConfig.objects.exclude(pk=self.object.pk).update(is_default=False)
+        messages.success(self.request, '调拨配置更新成功')
+        return super().form_valid(form)
+
+
+class AllocationConfigDeleteView(DeleteView):
+    model = AllocationConfig
+    template_name = 'allocation/config_confirm_delete.html'
+    success_url = reverse_lazy('allocation_config_list')
+
+    def delete(self, request, *args, **kwargs):
+        obj = self.get_object()
+        if obj.is_default:
+            messages.error(request, '默认配置不能删除，请先设置其他配置为默认')
+            return redirect(self.success_url)
+        messages.success(request, '调拨配置删除成功')
+        return super().delete(request, *args, **kwargs)
+
+
+# -------------------- Allocation Suggestion Views --------------------
+class AllocationSuggestionListView(ListView):
+    model = AllocationSuggestion
+    template_name = 'allocation/suggestion_list.html'
+    context_object_name = 'suggestions'
+    ordering = ['-priority_score', '-created_at']
+    paginate_by = 30
+
+    def get_queryset(self):
+        qs = super().get_queryset().select_related('source_granary', 'target_granary', 'grain_type', 'config')
+        status = self.request.GET.get('status')
+        priority = self.request.GET.get('priority')
+        if status:
+            qs = qs.filter(status=status)
+        if priority:
+            qs = qs.filter(priority_level=priority)
+        return qs
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['selected_status'] = self.request.GET.get('status', '')
+        ctx['selected_priority'] = self.request.GET.get('priority', '')
+        ctx['generate_form'] = AllocationGenerateForm()
+        return ctx
+
+
+def generate_allocation_suggestions(request):
+    if request.method == 'POST':
+        form = AllocationGenerateForm(request.POST)
+        if form.is_valid():
+            config = form.cleaned_data['config']
+            grain_type = form.cleaned_data.get('grain_type')
+            try:
+                suggestions = AllocationService.generate_allocation_suggestions(config, grain_type)
+                auto_approved = sum(1 for s in suggestions if s.status == 'approved')
+                messages.success(request, f'成功生成 {len(suggestions)} 条调拨建议，其中 {auto_approved} 条已自动批准')
+            except ValueError as e:
+                messages.error(request, str(e))
+    return redirect('allocation_suggestion_list')
+
+
+def allocation_suggestion_detail(request, pk):
+    suggestion = get_object_or_404(AllocationSuggestion, pk=pk)
+    approve_form = AllocationSuggestionApproveForm()
+    return render(request, 'allocation/suggestion_detail.html', {
+        'suggestion': suggestion,
+        'approve_form': approve_form,
+    })
+
+
+def approve_allocation_suggestion(request, pk):
+    suggestion = get_object_or_404(AllocationSuggestion, pk=pk)
+    if request.method == 'POST':
+        form = AllocationSuggestionApproveForm(request.POST)
+        if form.is_valid():
+            try:
+                execution = AllocationService.approve_suggestion(
+                    suggestion,
+                    approved_by=form.cleaned_data['approved_by'],
+                    approval_opinion=form.cleaned_data.get('approval_opinion'),
+                )
+                messages.success(request, f'调拨建议已批准，执行单号：{execution.execution_no}')
+                return redirect('allocation_execution_detail', pk=execution.pk)
+            except ValueError as e:
+                messages.error(request, str(e))
+    return redirect('allocation_suggestion_detail', pk=pk)
+
+
+def reject_allocation_suggestion(request, pk):
+    suggestion = get_object_or_404(AllocationSuggestion, pk=pk)
+    if request.method == 'POST':
+        form = AllocationSuggestionApproveForm(request.POST)
+        if form.is_valid():
+            try:
+                AllocationService.reject_suggestion(
+                    suggestion,
+                    approved_by=form.cleaned_data['approved_by'],
+                    approval_opinion=form.cleaned_data.get('approval_opinion'),
+                )
+                messages.success(request, '调拨建议已拒绝')
+            except ValueError as e:
+                messages.error(request, str(e))
+    return redirect('allocation_suggestion_detail', pk=pk)
+
+
+# -------------------- Allocation Execution Views --------------------
+class AllocationExecutionListView(ListView):
+    model = AllocationExecution
+    template_name = 'allocation/execution_list.html'
+    context_object_name = 'executions'
+    ordering = ['-created_at']
+    paginate_by = 30
+
+    def get_queryset(self):
+        qs = super().get_queryset().select_related('suggestion__source_granary', 'suggestion__target_granary')
+        status = self.request.GET.get('status')
+        if status:
+            qs = qs.filter(status=status)
+        return qs
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['selected_status'] = self.request.GET.get('status', '')
+        return ctx
+
+
+def allocation_execution_detail(request, pk):
+    execution = get_object_or_404(AllocationExecution, pk=pk)
+    form = AllocationExecutionForm(instance=execution)
+    return render(request, 'allocation/execution_detail.html', {
+        'execution': execution,
+        'form': form,
+    })
+
+
+def update_allocation_execution(request, pk):
+    execution = get_object_or_404(AllocationExecution, pk=pk)
+    if request.method == 'POST':
+        form = AllocationExecutionForm(request.POST, instance=execution)
+        if form.is_valid():
+            form.save()
+            messages.success(request, '调拨执行信息已更新')
+            return redirect('allocation_execution_detail', pk=pk)
+    return redirect('allocation_execution_detail', pk=pk)
+
+
+def update_execution_status(request, pk):
+    execution = get_object_or_404(AllocationExecution, pk=pk)
+    if request.method == 'POST':
+        status = request.POST.get('status')
+        operator = request.POST.get('operator', '系统')
+        try:
+            AllocationService.update_execution_status(
+                execution,
+                status=status,
+                operator=operator,
+            )
+            messages.success(request, f'状态已更新为：{execution.get_status_display()}')
+        except Exception as e:
+            messages.error(request, f'状态更新失败：{str(e)}')
+    return redirect('allocation_execution_detail', pk=pk)
+
+
+# -------------------- Analysis Views --------------------
+def allocation_analysis(request):
+    days = int(request.GET.get('days', 30))
+    start_date_str = request.GET.get('start_date', '')
+    end_date_str = request.GET.get('end_date', '')
+
+    start_date = None
+    end_date = None
+    if start_date_str:
+        from datetime import datetime
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+    if end_date_str:
+        from datetime import datetime
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+
+    efficiency = AllocationService.get_allocation_efficiency(days)
+    turnover_stats = PredictionStatisticsService.get_inventory_turnover_stats(days)
+    allocation_by_granary = PredictionStatisticsService.get_allocation_by_granary(days)
+
+    return render(request, 'allocation/analysis.html', {
+        'efficiency': efficiency,
+        'turnover_stats': turnover_stats,
+        'allocation_by_granary': allocation_by_granary,
+        'days': days,
+        'start_date': start_date_str,
+        'end_date': end_date_str,
+    })
+
+
+# -------------------- Prediction API Views --------------------
+def api_prediction_trend(request):
+    granary_id = request.GET.get('granary_id', '')
+    horizon_days = int(request.GET.get('horizon', 7))
+    days = int(request.GET.get('days', 14))
+    data = PredictionStatisticsService.get_prediction_trend(granary_id, horizon_days, days)
+    return JsonResponse(data, safe=False)
+
+
+def api_risk_distribution(request):
+    horizon_days = int(request.GET.get('horizon', 7))
+    data = PredictionStatisticsService.get_risk_distribution(horizon_days)
+    return JsonResponse(data)
+
+
+def api_inventory_distribution(request):
+    horizon_days = int(request.GET.get('horizon', 7))
+    data = PredictionStatisticsService.get_inventory_distribution(horizon_days)
+    return JsonResponse(data)
+
+
+def api_allocation_efficiency(request):
+    days = int(request.GET.get('days', 30))
+    data = AllocationService.get_allocation_efficiency(days)
+    return JsonResponse(data)
+
+
+def api_allocation_by_granary(request):
+    days = int(request.GET.get('days', 30))
+    data = PredictionStatisticsService.get_allocation_by_granary(days)
+    return JsonResponse({
+        'labels': [d['code'] for d in data],
+        'outbound': [round(d['outbound'], 2) for d in data],
+        'inbound': [round(d['inbound'], 2) for d in data],
+    })
+
+
+def api_inventory_turnover(request):
+    days = int(request.GET.get('days', 30))
+    data = PredictionStatisticsService.get_inventory_turnover_stats(days)
+    return JsonResponse({
+        'labels': [d['code'] for d in data],
+        'turnover_days': [d['turnover_days'] for d in data],
+        'turnover_rate': [d['turnover_rate'] for d in data],
+        'ratios': [d['ratio'] for d in data],
     })

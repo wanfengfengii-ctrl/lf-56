@@ -5,7 +5,9 @@ from datetime import timedelta
 from .models import (
     GrainType, Granary, TemperatureHumidityLog,
     VentilationLog, PestInspection, RiskAssessment,
-    Warning, DisposalTask, DisposalProgressLog
+    Warning, DisposalTask, DisposalProgressLog,
+    InventoryChangeLog, AllocationConfig, AllocationSuggestion,
+    AllocationExecution, GrainSituationPrediction
 )
 
 
@@ -330,4 +332,181 @@ class WarningFilterForm(forms.Form):
     end_date = forms.DateField(
         required=False,
         widget=forms.DateInput(attrs={'class': 'form-control form-control-sm', 'type': 'date'})
+    )
+
+
+class InventoryChangeLogForm(forms.ModelForm):
+    class Meta:
+        model = InventoryChangeLog
+        fields = ['granary', 'change_date', 'change_type', 'quantity', 'balance_after',
+                  'grain_type', 'operator', 'remark']
+        widgets = {
+            'granary': forms.Select(attrs={'class': 'form-select'}),
+            'change_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'change_type': forms.Select(attrs={'class': 'form-select'}),
+            'quantity': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'balance_after': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}),
+            'grain_type': forms.Select(attrs={'class': 'form-select'}),
+            'operator': forms.TextInput(attrs={'class': 'form-control'}),
+            'remark': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        }
+
+    def clean_quantity(self):
+        quantity = self.cleaned_data.get('quantity')
+        if quantity == 0:
+            raise ValidationError('变动数量不能为0')
+        return quantity
+
+    def clean_balance_after(self):
+        balance = self.cleaned_data.get('balance_after')
+        if balance is not None and balance < 0:
+            raise ValidationError('变动后库存不能为负数')
+        return balance
+
+
+class AllocationConfigForm(forms.ModelForm):
+    class Meta:
+        model = AllocationConfig
+        fields = ['name', 'description', 'is_default', 'safety_stock_ratio',
+                  'min_transfer_quantity', 'max_transfer_quantity', 'priority_rule',
+                  'risk_weight', 'inventory_weight', 'distance_weight',
+                  'high_risk_threshold', 'low_inventory_threshold',
+                  'high_inventory_threshold', 'allow_cross_grain_type',
+                  'auto_approve_below']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'is_default': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'safety_stock_ratio': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1', 'min': '0', 'max': '100'}),
+            'min_transfer_quantity': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}),
+            'max_transfer_quantity': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}),
+            'priority_rule': forms.Select(attrs={'class': 'form-select'}),
+            'risk_weight': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0', 'max': '1'}),
+            'inventory_weight': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0', 'max': '1'}),
+            'distance_weight': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0', 'max': '1'}),
+            'high_risk_threshold': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1', 'min': '0', 'max': '100'}),
+            'low_inventory_threshold': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1', 'min': '0', 'max': '100'}),
+            'high_inventory_threshold': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1', 'min': '0', 'max': '100'}),
+            'allow_cross_grain_type': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'auto_approve_below': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}),
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        total_weight = (cleaned_data.get('risk_weight') or 0) + \
+                       (cleaned_data.get('inventory_weight') or 0) + \
+                       (cleaned_data.get('distance_weight') or 0)
+        if abs(total_weight - 1.0) > 0.01:
+            raise ValidationError('风险、库存、距离权重之和必须等于1')
+        low_inv = cleaned_data.get('low_inventory_threshold')
+        high_inv = cleaned_data.get('high_inventory_threshold')
+        if low_inv is not None and high_inv is not None and low_inv >= high_inv:
+            raise ValidationError({'low_inventory_threshold': '低库存阈值必须小于高库存阈值'})
+        min_qty = cleaned_data.get('min_transfer_quantity')
+        max_qty = cleaned_data.get('max_transfer_quantity')
+        if min_qty is not None and max_qty is not None and min_qty >= max_qty:
+            raise ValidationError({'min_transfer_quantity': '最小调拨数量必须小于最大调拨数量'})
+        return cleaned_data
+
+
+class AllocationSuggestionForm(forms.ModelForm):
+    class Meta:
+        model = AllocationSuggestion
+        fields = ['source_granary', 'target_granary', 'grain_type',
+                  'suggested_quantity', 'priority_level', 'reason', 'expected_benefit']
+        widgets = {
+            'source_granary': forms.Select(attrs={'class': 'form-select'}),
+            'target_granary': forms.Select(attrs={'class': 'form-select'}),
+            'grain_type': forms.Select(attrs={'class': 'form-select'}),
+            'suggested_quantity': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}),
+            'priority_level': forms.Select(attrs={'class': 'form-select'}),
+            'reason': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'expected_benefit': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        source = cleaned_data.get('source_granary')
+        target = cleaned_data.get('target_granary')
+        if source and target and source.id == target.id:
+            raise ValidationError({'target_granary': '目标粮仓不能与源粮仓相同'})
+        qty = cleaned_data.get('suggested_quantity')
+        if qty is not None and qty <= 0:
+            raise ValidationError({'suggested_quantity': '调拨数量必须大于0'})
+        return cleaned_data
+
+
+class AllocationSuggestionApproveForm(forms.Form):
+    approved_by = forms.CharField(
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        label='审批人'
+    )
+    approval_opinion = forms.CharField(
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        required=False,
+        label='审批意见'
+    )
+
+
+class AllocationExecutionForm(forms.ModelForm):
+    class Meta:
+        model = AllocationExecution
+        fields = ['status', 'actual_quantity', 'estimated_departure', 'actual_departure',
+                  'estimated_arrival', 'actual_arrival', 'transporter', 'vehicle_no',
+                  'driver', 'driver_phone', 'operator', 'quality_check_result',
+                  'loss_quantity', 'remark']
+        widgets = {
+            'status': forms.Select(attrs={'class': 'form-select'}),
+            'actual_quantity': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}),
+            'estimated_departure': forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
+            'actual_departure': forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
+            'estimated_arrival': forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
+            'actual_arrival': forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
+            'transporter': forms.TextInput(attrs={'class': 'form-control'}),
+            'vehicle_no': forms.TextInput(attrs={'class': 'form-control'}),
+            'driver': forms.TextInput(attrs={'class': 'form-control'}),
+            'driver_phone': forms.TextInput(attrs={'class': 'form-control'}),
+            'operator': forms.TextInput(attrs={'class': 'form-control'}),
+            'quality_check_result': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'loss_quantity': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}),
+            'remark': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        actual_dep = cleaned_data.get('actual_departure')
+        actual_arr = cleaned_data.get('actual_arrival')
+        if actual_dep and actual_arr and actual_arr < actual_dep:
+            raise ValidationError({'actual_arrival': '实际到达时间不能早于出发时间'})
+        loss = cleaned_data.get('loss_quantity')
+        if loss is not None and loss < 0:
+            raise ValidationError({'loss_quantity': '损耗数量不能为负数'})
+        return cleaned_data
+
+
+class PredictionGenerateForm(forms.Form):
+    horizon_days = forms.ChoiceField(
+        choices=GrainSituationPrediction.PREDICTION_HORIZON_CHOICES,
+        widget=forms.Select(attrs={'class': 'form-select form-select-sm'}),
+        label='预测周期'
+    )
+    granary = forms.ModelChoiceField(
+        queryset=Granary.objects.filter(is_active=True),
+        required=False,
+        empty_label='全部粮仓',
+        widget=forms.Select(attrs={'class': 'form-select form-select-sm'})
+    )
+
+
+class AllocationGenerateForm(forms.Form):
+    config = forms.ModelChoiceField(
+        queryset=AllocationConfig.objects.all(),
+        widget=forms.Select(attrs={'class': 'form-select form-select-sm'}),
+        label='使用配置'
+    )
+    grain_type = forms.ModelChoiceField(
+        queryset=GrainType.objects.all(),
+        required=False,
+        empty_label='全部品类',
+        widget=forms.Select(attrs={'class': 'form-select form-select-sm'})
     )

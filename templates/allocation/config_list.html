@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block title %}调拨配置 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-gear-fill me-2"></i>调拨配置管理</h3>
+    <a href="{% url 'allocation_config_create' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>新增配置</a>
+</div>
+
+<div class="card stat-card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>配置名称</th>
+                    <th>默认</th>
+                    <th>安全库存比例</th>
+                    <th>调拨数量范围</th>
+                    <th>优先级规则</th>
+                    <th>权重配置</th>
+                    <th>风险/库存阈值</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for config in configs %}
+                <tr>
+                    <td>
+                        <strong>{{ config.name }}</strong>
+                        {% if config.description %}
+                        <br><small class="text-muted">{{ config.description|truncatechars:30 }}</small>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if config.is_default %}
+                        <span class="badge bg-primary"><i class="bi bi-star-fill"></i> 默认</span>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ config.safety_stock_ratio }}%</td>
+                    <td>{{ config.min_transfer_quantity }} - {{ config.max_transfer_quantity }}吨</td>
+                    <td>{{ config.get_priority_rule_display }}</td>
+                    <td>
+                        <small>风险:{{ config.risk_weight }}<br>库存:{{ config.inventory_weight }}<br>距离:{{ config.distance_weight }}</small>
+                    </td>
+                    <td>
+                        <small>高风险:{{ config.high_risk_threshold }}<br>低库存:{{ config.low_inventory_threshold }}%<br>高库存:{{ config.high_inventory_threshold }}%</small>
+                    </td>
+                    <td class="small">{{ config.created_at|date:'Y-m-d H:i' }}</td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <a href="{% url 'allocation_config_update' config.pk %}" class="btn btn-outline-primary">编辑</a>
+                            <a href="{% url 'allocation_config_delete' config.pk %}" class="btn btn-outline-danger">删除</a>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="9" class="text-center text-muted py-4">暂无调拨配置，请先创建配置</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

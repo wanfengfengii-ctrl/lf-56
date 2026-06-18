@@ -1,0 +1,370 @@
+{% extends 'base.html' %}
+{% block title %}调拨分析 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-graph-up-arrow me-2"></i>调拨效率与库存周转分析</h3>
+    <div>
+        <select id="periodSelect" class="form-select form-select-sm d-inline-block" style="width:auto;">
+            <option value="7" {% if period == 7 %}selected{% endif %}>近7天</option>
+            <option value="30" {% if period == 30 %}selected{% endif %}>近30天</option>
+            <option value="90" {% if period == 90 %}selected{% endif %}>近90天</option>
+        </select>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="stat-card stat-card-primary">
+            <div class="stat-card-body">
+                <div class="stat-card-icon"><i class="bi bi-truck"></i></div>
+                <div class="stat-card-content">
+                    <div class="stat-card-value">{{ stats.total_allocations }}</div>
+                    <div class="stat-card-label">总调拨次数</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card stat-card-success">
+            <div class="stat-card-body">
+                <div class="stat-card-icon"><i class="bi bi-check2-circle"></i></div>
+                <div class="stat-card-content">
+                    <div class="stat-card-value">{{ stats.completed_allocations }}</div>
+                    <div class="stat-card-label">已完成调拨</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card stat-card-warning">
+            <div class="stat-card-body">
+                <div class="stat-card-icon"><i class="bi bi-box-seam"></i></div>
+                <div class="stat-card-content">
+                    <div class="stat-card-value">{{ stats.total_quantity|floatformat:1 }}吨</div>
+                    <div class="stat-card-label">累计调拨数量</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card stat-card-info">
+            <div class="stat-card-body">
+                <div class="stat-card-icon"><i class="bi bi-cash"></i></div>
+                <div class="stat-card-content">
+                    <div class="stat-card-value">¥{{ stats.total_cost|floatformat:0 }}</div>
+                    <div class="stat-card-label">累计调拨成本</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="stat-card stat-card-danger">
+            <div class="stat-card-body">
+                <div class="stat-card-icon"><i class="bi bi-exclamation-triangle"></i></div>
+                <div class="stat-card-content">
+                    <div class="stat-card-value">{{ stats.avg_risk_reduction|floatformat:1 }}%</div>
+                    <div class="stat-card-label">平均风险降低</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="stat-card stat-card-primary">
+            <div class="stat-card-body">
+                <div class="stat-card-icon"><i class="bi bi-arrow-repeat"></i></div>
+                <div class="stat-card-content">
+                    <div class="stat-card-value">{{ stats.avg_turnover_improvement|floatformat:1 }}%</div>
+                    <div class="stat-card-label">平均库存周转提升</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-lg-6">
+        <div class="card stat-card">
+            <div class="card-header"><i class="bi bi-bar-chart-fill me-2"></i>调拨数量趋势</div>
+            <div class="card-body">
+                <canvas id="allocationTrendChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card stat-card">
+            <div class="card-header"><i class="bi bi-pie-chart-fill me-2"></i>调拨状态分布</div>
+            <div class="card-body">
+                <canvas id="allocationStatusChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-lg-6">
+        <div class="card stat-card">
+            <div class="card-header"><i class="bi bi-graph-up me-2"></i>库存周转率趋势</div>
+            <div class="card-body">
+                <canvas id="turnoverTrendChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card stat-card">
+            <div class="card-header"><i class="bi bi-bar-chart me-2"></i>各粮仓库存周转对比</div>
+            <div class="card-body">
+                <canvas id="granaryTurnoverChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-lg-6">
+        <div class="card stat-card">
+            <div class="card-header"><i class="bi bi-graph-down-arrow me-2"></i>风险降低效果趋势</div>
+            <div class="card-body">
+                <canvas id="riskReductionChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card stat-card">
+            <div class="card-header"><i class="bi bi-currency-yen me-2"></i>调拨成本对比</div>
+            <div class="card-body">
+                <canvas id="costChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card stat-card">
+    <div class="card-header"><i class="bi bi-table me-2"></i>调拨效率排行</div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>粮仓</th>
+                    <th>调拨次数</th>
+                    <th>调出总量</th>
+                    <th>调入总量</th>
+                    <th>平均运输天数</th>
+                    <th>平均损耗率</th>
+                    <th>综合效率评分</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for g in granary_stats %}
+                <tr>
+                    <td><strong>{{ g.granary.code }} - {{ g.granary.name }}</strong></td>
+                    <td>{{ g.total_allocations }}</td>
+                    <td class="text-danger">{{ g.total_out|floatformat:2 }}吨</td>
+                    <td class="text-success">{{ g.total_in|floatformat:2 }}吨</td>
+                    <td>{{ g.avg_transit_days|floatformat:1 }}天</td>
+                    <td>
+                        {% if g.avg_loss_rate > 0.5 %}
+                        <span class="text-danger">{{ g.avg_loss_rate|floatformat:2 }}%</span>
+                        {% elif g.avg_loss_rate > 0.2 %}
+                        <span class="text-warning">{{ g.avg_loss_rate|floatformat:2 }}%</span>
+                        {% else %}
+                        <span class="text-success">{{ g.avg_loss_rate|floatformat:2 }}%</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <strong class="text-primary">{{ g.efficiency_score|floatformat:2 }}</strong>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-center text-muted py-4">暂无调拨数据</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('periodSelect').addEventListener('change', function() {
+    window.location.href = '{% url "allocation_analysis" %}?period=' + this.value;
+});
+
+fetch('{% url "api_allocation_trend" %}?period={{ period }}')
+    .then(r => r.json())
+    .then(data => {
+        new Chart(document.getElementById('allocationTrendChart'), {
+            type: 'line',
+            data: {
+                labels: data.labels,
+                datasets: [
+                    {
+                        label: '调拨数量(吨)',
+                        data: data.quantities,
+                        borderColor: '#0d6efd',
+                        backgroundColor: 'rgba(13,110,253,0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: '调拨次数',
+                        data: data.counts,
+                        borderColor: '#198754',
+                        backgroundColor: 'transparent',
+                        borderDash: [5, 5],
+                        tension: 0.3,
+                        yAxisID: 'y1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    y: { beginAtZero: true, position: 'left', title: { display: true, text: '数量(吨)' } },
+                    y1: { beginAtZero: true, position: 'right', title: { display: true, text: '次数' }, grid: { drawOnChartArea: false } }
+                }
+            }
+        });
+    });
+
+fetch('{% url "api_allocation_status" %}?period={{ period }}')
+    .then(r => r.json())
+    .then(data => {
+        new Chart(document.getElementById('allocationStatusChart'), {
+            type: 'doughnut',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    data: data.data,
+                    backgroundColor: ['#198754', '#0d6efd', '#ffc107', '#6c757d', '#dc3545'],
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'right' }
+                }
+            }
+        });
+    });
+
+fetch('{% url "api_turnover_trend" %}?period={{ period }}')
+    .then(r => r.json())
+    .then(data => {
+        new Chart(document.getElementById('turnoverTrendChart'), {
+            type: 'line',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: '库存周转率',
+                    data: data.rates,
+                    borderColor: '#198754',
+                    backgroundColor: 'rgba(25,135,84,0.1)',
+                    fill: true,
+                    tension: 0.3
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: { y: { beginAtZero: true, title: { display: true, text: '周转率(%)' } } }
+            }
+        });
+    });
+
+fetch('{% url "api_granary_turnover" %}?period={{ period }}')
+    .then(r => r.json())
+    .then(data => {
+        new Chart(document.getElementById('granaryTurnoverChart'), {
+            type: 'bar',
+            data: {
+                labels: data.labels,
+                datasets: [
+                    {
+                        label: '调入量(吨)',
+                        data: data.in_quantities,
+                        backgroundColor: 'rgba(25,135,84,0.7)',
+                        borderRadius: 6
+                    },
+                    {
+                        label: '调出量(吨)',
+                        data: data.out_quantities,
+                        backgroundColor: 'rgba(220,53,69,0.7)',
+                        borderRadius: 6
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: { y: { beginAtZero: true } }
+            }
+        });
+    });
+
+fetch('{% url "api_risk_reduction" %}?period={{ period }}')
+    .then(r => r.json())
+    .then(data => {
+        new Chart(document.getElementById('riskReductionChart'), {
+            type: 'line',
+            data: {
+                labels: data.labels,
+                datasets: [
+                    {
+                        label: '平均风险评分',
+                        data: data.risk_scores,
+                        borderColor: '#dc3545',
+                        backgroundColor: 'rgba(220,53,69,0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: '风险降低率(%)',
+                        data: data.reductions,
+                        borderColor: '#198754',
+                        backgroundColor: 'transparent',
+                        borderDash: [5, 5],
+                        tension: 0.3,
+                        yAxisID: 'y1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    y: { beginAtZero: true, max: 10, position: 'left', title: { display: true, text: '风险评分' } },
+                    y1: { beginAtZero: true, max: 100, position: 'right', title: { display: true, text: '降低率(%)' }, grid: { drawOnChartArea: false } }
+                }
+            }
+        });
+    });
+
+fetch('{% url "api_allocation_cost" %}?period={{ period }}')
+    .then(r => r.json())
+    .then(data => {
+        new Chart(document.getElementById('costChart'), {
+            type: 'bar',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: '调拨成本(元)',
+                    data: data.costs,
+                    backgroundColor: 'rgba(13,110,253,0.7)',
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: { y: { beginAtZero: true, title: { display: true, text: '成本(元)' } } }
+            }
+        });
+    });
+</script>
+{% endblock %}

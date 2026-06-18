@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+{% block title %}{% if object %}编辑{% else %}新增{% endif %}调拨配置 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-gear-fill me-2"></i>{% if object %}编辑{% else %}新增{% endif %}调拨配置</h3>
+    <a href="{% url 'allocation_config_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回列表</a>
+</div>
+
+<div class="card stat-card">
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">{{ form.name.label }}</label>
+                    {{ form.name }}
+                    {% if form.name.errors %}<div class="text-danger small">{{ form.name.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">{{ form.description.label }}</label>
+                    {{ form.description }}
+                    {% if form.description.errors %}<div class="text-danger small">{{ form.description.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-12">
+                    <div class="form-check">
+                        {{ form.is_default }}
+                        <label class="form-check-label" for="id_is_default">{{ form.is_default.label }}</label>
+                    </div>
+                </div>
+
+                <div class="col-md-12"><h6 class="border-top pt-3 mt-2"><i class="bi bi-gear me-2"></i>库存参数</h6></div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.safety_stock_ratio.label }}</label>
+                    {{ form.safety_stock_ratio }}
+                    <small class="text-muted d-block">相对于设计容量的安全库存比例</small>
+                    {% if form.safety_stock_ratio.errors %}<div class="text-danger small">{{ form.safety_stock_ratio.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.min_transfer_quantity.label }}</label>
+                    {{ form.min_transfer_quantity }}
+                    {% if form.min_transfer_quantity.errors %}<div class="text-danger small">{{ form.min_transfer_quantity.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.max_transfer_quantity.label }}</label>
+                    {{ form.max_transfer_quantity }}
+                    {% if form.max_transfer_quantity.errors %}<div class="text-danger small">{{ form.max_transfer_quantity.errors }}</div>{% endif %}
+                </div>
+
+                <div class="col-md-12"><h6 class="border-top pt-3 mt-2"><i class="bi bi-list-ol me-2"></i>优先级配置</h6></div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.priority_rule.label }}</label>
+                    {{ form.priority_rule }}
+                    {% if form.priority_rule.errors %}<div class="text-danger small">{{ form.priority_rule.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">{{ form.risk_weight.label }}</label>
+                    {{ form.risk_weight }}
+                    {% if form.risk_weight.errors %}<div class="text-danger small">{{ form.risk_weight.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">{{ form.inventory_weight.label }}</label>
+                    {{ form.inventory_weight }}
+                    {% if form.inventory_weight.errors %}<div class="text-danger small">{{ form.inventory_weight.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">{{ form.distance_weight.label }}</label>
+                    {{ form.distance_weight }}
+                    {% if form.distance_weight.errors %}<div class="text-danger small">{{ form.distance_weight.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label text-muted">权重合计</label>
+                    <input type="text" class="form-control" id="weightTotal" readonly value="1.0">
+                </div>
+
+                <div class="col-md-12"><h6 class="border-top pt-3 mt-2"><i class="bi bi-exclamation-triangle me-2"></i>阈值配置</h6></div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.high_risk_threshold.label }}</label>
+                    {{ form.high_risk_threshold }}
+                    {% if form.high_risk_threshold.errors %}<div class="text-danger small">{{ form.high_risk_threshold.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.low_inventory_threshold.label }}</label>
+                    {{ form.low_inventory_threshold }}
+                    {% if form.low_inventory_threshold.errors %}<div class="text-danger small">{{ form.low_inventory_threshold.errors }}</div>{% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.high_inventory_threshold.label }}</label>
+                    {{ form.high_inventory_threshold }}
+                    {% if form.high_inventory_threshold.errors %}<div class="text-danger small">{{ form.high_inventory_threshold.errors }}</div>{% endif %}
+                </div>
+
+                <div class="col-md-12"><h6 class="border-top pt-3 mt-2"><i class="bi bi-sliders me-2"></i>其他配置</h6></div>
+                <div class="col-md-6">
+                    <div class="form-check">
+                        {{ form.allow_cross_grain_type }}
+                        <label class="form-check-label" for="id_allow_cross_grain_type">{{ form.allow_cross_grain_type.label }}</label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">{{ form.auto_approve_below.label }}</label>
+                    {{ form.auto_approve_below }}
+                    <small class="text-muted d-block">低于此数量的调拨建议自动批准</small>
+                    {% if form.auto_approve_below.errors %}<div class="text-danger small">{{ form.auto_approve_below.errors }}</div>{% endif %}
+                </div>
+            </div>
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary me-2"><i class="bi bi-save me-1"></i>保存</button>
+                <a href="{% url 'allocation_config_list' %}" class="btn btn-secondary">取消</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function updateWeightTotal() {
+    const r = parseFloat(document.getElementById('id_risk_weight').value) || 0;
+    const i = parseFloat(document.getElementById('id_inventory_weight').value) || 0;
+    const d = parseFloat(document.getElementById('id_distance_weight').value) || 0;
+    const total = (r + i + d).toFixed(2);
+    const el = document.getElementById('weightTotal');
+    el.value = total;
+    if (Math.abs(total - 1.0) > 0.01) {
+        el.classList.add('is-invalid');
+    } else {
+        el.classList.remove('is-invalid');
+    }
+}
+document.getElementById('id_risk_weight').addEventListener('input', updateWeightTotal);
+document.getElementById('id_inventory_weight').addEventListener('input', updateWeightTotal);
+document.getElementById('id_distance_weight').addEventListener('input', updateWeightTotal);
+updateWeightTotal();
+</script>
+{% endblock %}

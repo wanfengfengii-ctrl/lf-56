@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+{% block title %}新增库存变动 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-plus-lg me-2"></i>新增库存变动记录</h3>
+    <a href="{% url 'inventory_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回列表</a>
+</div>
+
+<div class="card stat-card">
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.granary.label }}</label>
+                    {{ form.granary }}
+                    {% if form.granary.errors %}
+                    <div class="text-danger small">{{ form.granary.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.change_date.label }}</label>
+                    {{ form.change_date }}
+                    {% if form.change_date.errors %}
+                    <div class="text-danger small">{{ form.change_date.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.change_type.label }}</label>
+                    {{ form.change_type }}
+                    {% if form.change_type.errors %}
+                    <div class="text-danger small">{{ form.change_type.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.grain_type.label }}</label>
+                    {{ form.grain_type }}
+                    {% if form.grain_type.errors %}
+                    <div class="text-danger small">{{ form.grain_type.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.quantity.label }}</label>
+                    {{ form.quantity }}
+                    <small class="text-muted d-block">入库填正数，出库填负数</small>
+                    {% if form.quantity.errors %}
+                    <div class="text-danger small">{{ form.quantity.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.balance_after.label }}</label>
+                    {{ form.balance_after }}
+                    {% if form.balance_after.errors %}
+                    <div class="text-danger small">{{ form.balance_after.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.operator.label }}</label>
+                    {{ form.operator }}
+                    {% if form.operator.errors %}
+                    <div class="text-danger small">{{ form.operator.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-8">
+                    <label class="form-label">{{ form.remark.label }}</label>
+                    {{ form.remark }}
+                    {% if form.remark.errors %}
+                    <div class="text-danger small">{{ form.remark.errors }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary me-2"><i class="bi bi-save me-1"></i>保存</button>
+                <a href="{% url 'inventory_list' %}" class="btn btn-secondary">取消</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

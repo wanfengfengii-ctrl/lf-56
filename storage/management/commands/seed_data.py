@@ -5,8 +5,11 @@ import random
 
 from storage.models import (
     GrainType, Granary, TemperatureHumidityLog,
-    VentilationLog, PestInspection
+    VentilationLog, PestInspection, InventoryChangeLog,
+    GrainSituationPrediction, AllocationConfig, AllocationSuggestion,
+    AllocationExecution
 )
+from storage.services import GrainSituationPredictionService, AllocationService, InventoryService
 from storage.services import RiskCalculator
 
 
@@ -161,5 +164,164 @@ class Command(BaseCommand):
                     assess.save()
                 risk_count += 1
         self.stdout.write(self.style.SUCCESS(f'  风险评估: {risk_count} 条'))
+
+        self.stdout.write('  正在生成库存变动记录...')
+        inv_count = 0
+        for g in granaries:
+            current_balance = g.current_stock
+            for day_offset in range(29, -1, -1):
+                d = today - timedelta(days=day_offset)
+                if random.random() < 0.3:
+                    change_type = random.choice(['in', 'out', 'in', 'out', 'adjust'])
+                    if change_type == 'in':
+                        qty = round(random.uniform(10, 100), 2)
+                    elif change_type == 'out':
+                        qty = -round(random.uniform(5, 80), 2)
+                    else:
+                        qty = round(random.uniform(-20, 20), 2)
+                    
+                    current_balance += qty
+                    if current_balance < 0:
+                        current_balance = 0
+                    
+                    InventoryChangeLog.objects.get_or_create(
+                        granary=g, change_date=d, change_type=change_type,
+                        defaults={
+                            'grain_type': g.grain_type,
+                            'quantity': qty,
+                            'balance_after': current_balance,
+                            'operator': random.choice(['张工', '李工', '王工', '赵工']),
+                            'remark': random.choice(['日常出入库', '盘点调整', '采购入库', '销售出库', '']),
+                        }
+                    )
+                    inv_count += 1
+        self.stdout.write(self.style.SUCCESS(f'  库存变动记录: {inv_count} 条'))
+
+        self.stdout.write('  正在生成调拨配置...')
+        configs = []
+        config_data = [
+            {
+                'name': '标准调拨策略', 'description': '默认调拨配置，平衡风险和库存',
+                'is_default': True,
+                'safety_stock_ratio': 30,
+                'min_transfer_quantity': 50, 'max_transfer_quantity': 500,
+                'priority_rule': 'balanced',
+                'risk_weight': 0.4, 'inventory_weight': 0.4, 'distance_weight': 0.2,
+                'high_risk_threshold': 7.0,
+                'low_inventory_threshold': 20, 'high_inventory_threshold': 90,
+                'allow_cross_grain_type': False,
+                'auto_approve_below': 100,
+            },
+            {
+                'name': '风险优先策略', 'description': '优先处理高风险粮仓',
+                'is_default': False,
+                'safety_stock_ratio': 25,
+                'min_transfer_quantity': 30, 'max_transfer_quantity': 600,
+                'priority_rule': 'risk_first',
+                'risk_weight': 0.6, 'inventory_weight': 0.25, 'distance_weight': 0.15,
+                'high_risk_threshold': 6.0,
+                'low_inventory_threshold': 15, 'high_inventory_threshold': 95,
+                'allow_cross_grain_type': False,
+                'auto_approve_below': 150,
+            },
+        ]
+        for cd in config_data:
+            if cd['is_default']:
+                AllocationConfig.objects.filter(is_default=True).update(is_default=False)
+            obj, created = AllocationConfig.objects.get_or_create(
+                name=cd['name'], defaults=cd
+            )
+            configs.append(obj)
+        self.stdout.write(self.style.SUCCESS(f'  调拨配置: {len(configs)} 个'))
+
+        self.stdout.write('  正在生成粮情预测...')
+        pred_count = 0
+        for horizon in [7, 14, 30]:
+            for g in granaries:
+                try:
+                    pred = GrainSituationPredictionService.predict_granary(
+                        granary=g,
+                        prediction_date=today,
+                        horizon_days=horizon
+                    )
+                    if pred:
+                        pred_count += 1
+                except Exception as e:
+                    self.stdout.write(self.style.WARNING(f'    生成{g.code}{horizon}天预测时出错: {e}'))
+        self.stdout.write(self.style.SUCCESS(f'  粮情预测: {pred_count} 条'))
+
+        self.stdout.write('  正在生成调拨建议...')
+        try:
+            suggestions = AllocationService.generate_allocation_suggestions(
+                config=configs[0]
+            )
+            self.stdout.write(self.style.SUCCESS(f'  调拨建议: {len(suggestions)} 条'))
+            
+            for i, s in enumerate(suggestions):
+                if i < 2 and s.status == 'pending':
+                    s.status = 'approved'
+                    s.approved_by = '系统自动'
+                    s.approved_at = timezone.now()
+                    s.approval_remark = '低于阈值自动批准'
+                    s.save()
+                    
+                    exec_obj = AllocationService.create_execution(
+                        suggestion=s,
+                        operator='系统'
+                    )
+                    if exec_obj:
+                        exec_obj.planned_date = today + timedelta(days=1)
+                        exec_obj.save()
+                        if i == 0:
+                            exec_obj.status = 'in_transit'
+                            exec_obj.actual_out_date = today
+                            exec_obj.actual_quantity = s.suggested_quantity
+                            exec_obj.out_operator = '张工'
+                            exec_obj.transport_vehicle = '京A·12345'
+                            exec_obj.out_remark = '出库正常'
+                            exec_obj.save()
+                        elif i == 1:
+                            exec_obj.status = 'completed'
+                            exec_obj.actual_out_date = today - timedelta(days=3)
+                            exec_obj.actual_in_date = today
+                            exec_obj.actual_quantity = s.suggested_quantity
+                            exec_obj.received_quantity = s.suggested_quantity - round(random.uniform(0, 0.5), 2)
+                            exec_obj.out_operator = '李工'
+                            exec_obj.in_operator = '王工'
+                            exec_obj.transport_vehicle = '京A·67890'
+                            exec_obj.actual_cost = round(s.suggested_quantity * random.uniform(5, 15), 2)
+                            exec_obj.out_remark = '出库正常'
+                            exec_obj.in_remark = '入库验收完成'
+                            exec_obj.completed_at = timezone.now()
+                            exec_obj.save()
+                            
+                            InventoryService.create_change_log(
+                                granary=exec_obj.source_granary,
+                                change_type='transfer_out',
+                                quantity=-exec_obj.actual_quantity,
+                                grain_type=exec_obj.grain_type,
+                                operator='王工',
+                                remark='调拨出库',
+                                related_allocation=exec_obj
+                            )
+                            InventoryService.create_change_log(
+                                granary=exec_obj.target_granary,
+                                change_type='transfer_in',
+                                quantity=exec_obj.received_quantity,
+                                grain_type=exec_obj.grain_type,
+                                operator='王工',
+                                remark='调拨入库',
+                                related_allocation=exec_obj
+                            )
+                
+                elif i < 4 and s.status == 'pending':
+                    s.status = 'rejected'
+                    s.approved_by = '管理员'
+                    s.approved_at = timezone.now()
+                    s.approval_remark = random.choice(['当前库存充足，暂不需要', '运输成本过高', '待进一步评估'])
+                    s.save()
+            
+        except Exception as e:
+            self.stdout.write(self.style.WARNING(f'    生成调拨建议时出错: {e}'))
 
         self.stdout.write(self.style.SUCCESS('测试数据初始化完成！'))

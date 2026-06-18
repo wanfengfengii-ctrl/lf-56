@@ -1,0 +1,126 @@
+{% extends 'base.html' %}
+{% block title %}调拨执行 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-truck me-2"></i>调拨执行记录</h3>
+</div>
+
+<div class="card stat-card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small text-muted">状态</label>
+                <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="">全部状态</option>
+                    <option value="pending" {% if selected_status == 'pending' %}selected{% endif %}>待执行</option>
+                    <option value="in_transit" {% if selected_status == 'in_transit' %}selected{% endif %}>运输中</option>
+                    <option value="completed" {% if selected_status == 'completed' %}selected{% endif %}>已完成</option>
+                    <option value="cancelled" {% if selected_status == 'cancelled' %}selected{% endif %}>已取消</option>
+                </select>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card stat-card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>执行单号</th>
+                    <th>关联建议</th>
+                    <th>源→目的</th>
+                    <th>粮食品类</th>
+                    <th>计划数量</th>
+                    <th>实际数量</th>
+                    <th>状态</th>
+                    <th>计划日期</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for e in executions %}
+                <tr>
+                    <td><a href="{% url 'allocation_execution_detail' e.pk %}"><strong>{{ e.execution_no }}</strong></a></td>
+                    <td class="small">
+                        {% if e.suggestion %}
+                        <a href="{% url 'allocation_suggestion_detail' e.suggestion.pk %}">{{ e.suggestion.suggestion_no }}</a>
+                        {% else %}-{% endif %}
+                    </td>
+                    <td>
+                        <span class="text-primary">{{ e.source_granary.code }}</span>
+                        <i class="bi bi-arrow-right mx-1"></i>
+                        <span class="text-success">{{ e.target_granary.code }}</span>
+                    </td>
+                    <td>{{ e.grain_type.name }}</td>
+                    <td>{{ e.planned_quantity|floatformat:2 }}吨</td>
+                    <td>
+                        {% if e.actual_quantity %}
+                        {{ e.actual_quantity|floatformat:2 }}吨
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if e.status == 'pending' %}
+                        <span class="badge bg-secondary">待执行</span>
+                        {% elif e.status == 'in_transit' %}
+                        <span class="badge bg-warning text-dark">运输中</span>
+                        {% elif e.status == 'completed' %}
+                        <span class="badge bg-success">已完成</span>
+                        {% elif e.status == 'cancelled' %}
+                        <span class="badge bg-danger">已取消</span>
+                        {% else %}
+                        <span class="badge bg-secondary">{{ e.get_status_display }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="small">{{ e.planned_date|date:'Y-m-d' }}</td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <a href="{% url 'allocation_execution_detail' e.pk %}" class="btn btn-outline-primary">详情</a>
+                            {% if e.status == 'pending' %}
+                            <form method="post" action="{% url 'allocation_execution_start' e.pk %}" class="d-inline" onsubmit="return confirm('确定开始运输？');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-primary">开始</button>
+                            </form>
+                            {% endif %}
+                            {% if e.status == 'in_transit' %}
+                            <form method="post" action="{% url 'allocation_execution_complete' e.pk %}" class="d-inline" onsubmit="return confirm('确定完成调拨？请确认已完成入库。');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-success">完成</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="9" class="text-center text-muted py-4">暂无调拨执行记录</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% if is_paginated %}
+    <div class="card-footer bg-white border-top">
+        <nav>
+            <ul class="pagination pagination-sm mb-0 justify-content-center">
+                {% if page_obj.has_previous %}
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">上一页</a></li>
+                {% endif %}
+                {% for p in page_obj.paginator.page_range %}
+                {% if p == page_obj.number %}
+                <li class="page-item active"><span class="page-link">{{ p }}</span></li>
+                {% else %}
+                <li class="page-item"><a class="page-link" href="?page={{ p }}">{{ p }}</a></li>
+                {% endif %}
+                {% endfor %}
+                {% if page_obj.has_next %}
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">下一页</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

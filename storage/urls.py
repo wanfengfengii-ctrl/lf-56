@@ -56,4 +56,44 @@ urlpatterns = [
     path('tasks/<int:pk>/review/', views.task_review, name='task_review'),
     path('tasks/<int:pk>/redo/', views.task_redo, name='task_redo'),
     path('tasks/<int:pk>/archive/', views.task_archive, name='task_archive'),
+
+    # Prediction API endpoints
+    path('api/prediction-trend/', views.api_prediction_trend, name='api_prediction_trend'),
+    path('api/risk-distribution/', views.api_risk_distribution, name='api_risk_distribution'),
+    path('api/inventory-distribution/', views.api_inventory_distribution, name='api_inventory_distribution'),
+    path('api/allocation-efficiency/', views.api_allocation_efficiency, name='api_allocation_efficiency'),
+    path('api/allocation-by-granary/', views.api_allocation_by_granary, name='api_allocation_by_granary'),
+    path('api/inventory-turnover/', views.api_inventory_turnover, name='api_inventory_turnover'),
+
+    # Prediction views
+    path('prediction/', views.prediction_dashboard, name='prediction_dashboard'),
+    path('prediction/generate/', views.generate_predictions, name='prediction_generate'),
+    path('prediction/list/', views.prediction_list, name='prediction_list'),
+    path('prediction/<int:pk>/', views.prediction_detail, name='prediction_detail'),
+
+    # Inventory change views
+    path('inventory/', views.InventoryChangeLogListView.as_view(), name='inventory_list'),
+    path('inventory/create/', views.InventoryChangeLogCreateView.as_view(), name='inventory_create'),
+
+    # Allocation config views
+    path('allocation/configs/', views.AllocationConfigListView.as_view(), name='allocation_config_list'),
+    path('allocation/configs/create/', views.AllocationConfigCreateView.as_view(), name='allocation_config_create'),
+    path('allocation/configs/<int:pk>/update/', views.AllocationConfigUpdateView.as_view(), name='allocation_config_update'),
+    path('allocation/configs/<int:pk>/delete/', views.AllocationConfigDeleteView.as_view(), name='allocation_config_delete'),
+
+    # Allocation suggestion views
+    path('allocation/suggestions/', views.AllocationSuggestionListView.as_view(), name='allocation_suggestion_list'),
+    path('allocation/suggestions/generate/', views.generate_allocation_suggestions, name='allocation_suggestion_generate'),
+    path('allocation/suggestions/<int:pk>/', views.allocation_suggestion_detail, name='allocation_suggestion_detail'),
+    path('allocation/suggestions/<int:pk>/approve/', views.approve_allocation_suggestion, name='allocation_suggestion_approve'),
+    path('allocation/suggestions/<int:pk>/reject/', views.reject_allocation_suggestion, name='allocation_suggestion_reject'),
+
+    # Allocation execution views
+    path('allocation/executions/', views.AllocationExecutionListView.as_view(), name='allocation_execution_list'),
+    path('allocation/executions/<int:pk>/', views.allocation_execution_detail, name='allocation_execution_detail'),
+    path('allocation/executions/<int:pk>/update/', views.update_allocation_execution, name='allocation_execution_update'),
+    path('allocation/executions/<int:pk>/status/', views.update_execution_status, name='allocation_execution_status'),
+
+    # Analysis views
+    path('allocation/analysis/', views.allocation_analysis, name='allocation_analysis'),
 ]

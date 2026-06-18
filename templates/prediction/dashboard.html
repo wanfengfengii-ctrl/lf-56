@@ -1,0 +1,422 @@
+{% extends 'base.html' %}
+{% block title %}粮情预测 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-graph-up-arrow me-2"></i>粮情预测与风险预警</h3>
+    <div class="d-flex gap-2">
+        <a href="{% url 'prediction_list' %}" class="btn btn-outline-secondary"><i class="bi bi-list-ul me-1"></i>预测列表</a>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#generateModal">
+            <i class="bi bi-magic me-1"></i>生成预测
+        </button>
+    </div>
+</div>
+
+<div class="card stat-card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label small text-muted">预测周期</label>
+                <select name="horizon" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="7" {% if horizon_days == 7 %}selected{% endif %}>7天</option>
+                    <option value="14" {% if horizon_days == 14 %}selected{% endif %}>14天</option>
+                    <option value="30" {% if horizon_days == 30 %}selected{% endif %}>30天</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted">粮仓</label>
+                <select name="granary" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="all" {% if selected_granary == 'all' %}selected{% endif %}>全部粮仓</option>
+                    {% for g in granaries %}
+                    <option value="{{ g.id }}" {% if selected_granary == g.id|stringformat:"i" %}selected{% endif %}>{{ g.code }} - {{ g.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <small class="text-muted">数据日期：{{ today|date:'Y-m-d' }}</small>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <p class="text-muted small mb-1">预测粮仓数</p>
+                        <h4 class="fw-bold text-primary">{{ overview.total_predictions }}</h4>
+                    </div>
+                    <div class="stat-icon text-primary"><i class="bi bi-building"></i></div>
+                </div>
+                <small class="text-muted">平均置信度：{{ overview.avg_confidence }}%</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <p class="text-muted small mb-1">高风险预警</p>
+                        <h4 class="fw-bold text-danger">{{ overview.high_risk_count }}</h4>
+                    </div>
+                    <div class="stat-icon text-danger"><i class="bi bi-exclamation-triangle-fill"></i></div>
+                </div>
+                <small class="text-muted">平均预测风险：{{ overview.avg_predicted_risk }}分</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <p class="text-muted small mb-1">库存压力</p>
+                        <h4 class="fw-bold text-warning">{{ overview.inventory_pressure_count }}</h4>
+                    </div>
+                    <div class="stat-icon text-warning"><i class="bi bi-box-seam"></i></div>
+                </div>
+                <small class="text-muted">库存过高或不足</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <p class="text-muted small mb-1">风险趋势</p>
+                        <div class="d-flex gap-2 align-items-center">
+                            <span class="badge bg-success">好转 {{ overview.risk_improving }}</span>
+                            <span class="badge bg-info">稳定 {{ overview.risk_stable }}</span>
+                            <span class="badge bg-danger">恶化 {{ overview.risk_deteriorating }}</span>
+                        </div>
+                    </div>
+                    <div class="stat-icon text-info"><i class="bi bi-arrow-up-down"></i></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-md-6">
+        <div class="chart-container">
+            <h6 class="mb-3"><i class="bi bi-pie-chart me-2"></i>预测风险等级分布</h6>
+            <canvas id="riskDistChart" height="200"></canvas>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="chart-container">
+            <h6 class="mb-3"><i class="bi bi-bar-chart me-2"></i>预测库存分布</h6>
+            <canvas id="invDistChart" height="200"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-md-12">
+        <div class="chart-container">
+            <h6 class="mb-3"><i class="bi bi-graph-up me-2"></i>预测风险趋势（{{ horizon_days }}天预测）</h6>
+            <div class="mb-3">
+                <select id="trendGranary" class="form-select form-select-sm w-auto d-inline">
+                    <option value="all">全部粮仓</option>
+                    {% for g in granaries %}
+                    <option value="{{ g.id }}">{{ g.code }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <canvas id="trendChart" height="120"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mt-4">
+    <div class="col-md-6">
+        <div class="card stat-card">
+            <div class="card-header bg-white border-bottom">
+                <h6 class="mb-0"><i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>高风险储位预警</h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                        <tr>
+                            <th>粮仓</th>
+                            <th>预测风险</th>
+                            <th>风险等级</th>
+                            <th>风险趋势</th>
+                            <th>预警提示</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for p in high_risk_predictions %}
+                        <tr>
+                            <td><a href="{% url 'prediction_detail' p.pk %}">{{ p.granary.code }}</a></td>
+                            <td><strong class="text-danger">{{ p.predicted_overall_risk|floatformat:1 }}</strong></td>
+                            <td><span class="risk-badge risk-high">高风险</span></td>
+                            <td>
+                                {% if p.risk_trend == 'improving' %}
+                                <span class="text-success"><i class="bi bi-arrow-down"></i> 好转</span>
+                                {% elif p.risk_trend == 'deteriorating' %}
+                                <span class="text-danger"><i class="bi bi-arrow-up"></i> 恶化</span>
+                                {% else %}
+                                <span class="text-info"><i class="bi bi-dash"></i> 稳定</span>
+                                {% endif %}
+                            </td>
+                            <td class="small" style="max-width:250px;">{{ p.warning_message|truncatechars:40 }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="5" class="text-center text-muted py-4">暂无高风险预警</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card stat-card">
+            <div class="card-header bg-white border-bottom">
+                <h6 class="mb-0"><i class="bi bi-box-seam text-warning me-2"></i>库存压力预警</h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                        <tr>
+                            <th>粮仓</th>
+                            <th>当前库存</th>
+                            <th>预测库存</th>
+                            <th>库存趋势</th>
+                            <th>容量占比</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for p in inventory_pressure %}
+                        <tr>
+                            <td><a href="{% url 'prediction_detail' p.pk %}">{{ p.granary.code }}</a></td>
+                            <td>{{ p.granary.current_stock|floatformat:1 }}吨</td>
+                            <td>{{ p.predicted_inventory|floatformat:1 }}吨</td>
+                            <td>
+                                {% if p.inventory_trend == 'improving' %}
+                                <span class="text-success"><i class="bi bi-arrow-up"></i> 上升</span>
+                                {% elif p.inventory_trend == 'deteriorating' %}
+                                <span class="text-danger"><i class="bi bi-arrow-down"></i> 下降</span>
+                                {% else %}
+                                <span class="text-info"><i class="bi bi-dash"></i> 稳定</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% widthratio p.predicted_inventory p.granary.capacity 100 as ratio %}
+                                {% if ratio >= 85 %}
+                                <span class="text-danger fw-bold">{{ ratio }}%</span>
+                                {% elif ratio <= 20 %}
+                                <span class="text-warning fw-bold">{{ ratio }}%</span>
+                                {% else %}
+                                <span class="text-success">{{ ratio }}%</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="5" class="text-center text-muted py-4">暂无库存压力预警</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card stat-card mt-4">
+    <div class="card-header bg-white border-bottom">
+        <h6 class="mb-0"><i class="bi bi-table me-2"></i>最新预测结果（{{ horizon_days }}天）</h6>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>粮仓</th>
+                    <th>预测温度</th>
+                    <th>预测湿度</th>
+                    <th>综合风险</th>
+                    <th>风险等级</th>
+                    <th>风险趋势</th>
+                    <th>预测库存</th>
+                    <th>置信度</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for p in latest_predictions %}
+                <tr class="{% if p.is_high_risk %}table-danger{% elif p.is_inventory_pressure %}table-warning{% endif %}">
+                    <td>{{ p.granary.code }}</td>
+                    <td>{{ p.predicted_temp|floatformat:1 }}℃</td>
+                    <td>{{ p.predicted_humidity|floatformat:1 }}%</td>
+                    <td>
+                        <strong {% if p.predicted_overall_risk >= 70 %}class="text-danger"{% elif p.predicted_overall_risk >= 30 %}class="text-warning"{% else %}class="text-success"{% endif %}>
+                            {{ p.predicted_overall_risk|floatformat:1 }}
+                        </strong>
+                    </td>
+                    <td>
+                        {% if p.predicted_risk_level == 'high' %}
+                        <span class="risk-badge risk-high">高</span>
+                        {% elif p.predicted_risk_level == 'medium' %}
+                        <span class="risk-badge risk-medium">中</span>
+                        {% else %}
+                        <span class="risk-badge risk-low">低</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if p.risk_trend == 'improving' %}
+                        <span class="text-success"><i class="bi bi-arrow-down"></i></span>
+                        {% elif p.risk_trend == 'deteriorating' %}
+                        <span class="text-danger"><i class="bi bi-arrow-up"></i></span>
+                        {% else %}
+                        <span class="text-info"><i class="bi bi-dash"></i></span>
+                        {% endif %}
+                    </td>
+                    <td>{{ p.predicted_inventory|floatformat:1 }}吨</td>
+                    <td>
+                        <div class="progress" style="height:6px; width:60px; display:inline-block; vertical-align:middle;">
+                            <div class="progress-bar {% if p.confidence_score >= 80 %}bg-success{% elif p.confidence_score >= 60 %}bg-info{% else %}bg-warning{% endif %}" style="width:{{ p.confidence_score }}%"></div>
+                        </div>
+                        <small class="ms-1">{{ p.confidence_score }}%</small>
+                    </td>
+                    <td><a href="{% url 'prediction_detail' p.pk %}" class="btn btn-sm btn-outline-primary">详情</a></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="9" class="text-center text-muted py-4">暂无预测数据，请点击"生成预测"按钮</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="generateModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="{% url 'prediction_generate' %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">生成粮情预测</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    {{ generate_form.as_p }}
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">生成预测</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function loadCharts() {
+    const horizon = {{ horizon_days }};
+    const granary = document.getElementById('trendGranary').value;
+
+    fetch(`{% url 'api_risk_distribution' %}?horizon=${horizon}`)
+        .then(r => r.json())
+        .then(data => {
+            const ctx = document.getElementById('riskDistChart');
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['低风险', '中风险', '高风险'],
+                    datasets: [{
+                        data: [data.low, data.medium, data.high],
+                        backgroundColor: ['#28a745', '#ffc107', '#dc3545']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+        });
+
+    fetch(`{% url 'api_inventory_distribution' %}?horizon=${horizon}`)
+        .then(r => r.json())
+        .then(data => {
+            const ctx = document.getElementById('invDistChart');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['库存过低(<20%)', '库存正常', '库存过高(>85%)'],
+                    datasets: [{
+                        label: '粮仓数量',
+                        data: [data.low, data.normal, data.high],
+                        backgroundColor: ['#ffc107', '#28a745', '#dc3545']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        });
+
+    fetch(`{% url 'api_prediction_trend' %}?granary_id=${granary}&horizon=${horizon}&days=14`)
+        .then(r => r.json())
+        .then(data => {
+            const ctx = document.getElementById('trendChart');
+            if (data.lines) {
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.labels,
+                        datasets: data.lines
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: { legend: { position: 'bottom' } },
+                        scales: { y: { beginAtZero: true, max: 100 } }
+                    }
+                });
+            } else {
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.labels,
+                        datasets: [{
+                            label: '预测风险评分',
+                            data: data.risk_scores,
+                            borderColor: '#dc3545',
+                            backgroundColor: 'rgba(220,53,69,0.1)',
+                            fill: true,
+                            tension: 0.3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: { legend: { display: false } },
+                        scales: { y: { beginAtZero: true, max: 100 } }
+                    }
+                });
+            }
+        });
+}
+
+document.getElementById('trendGranary').addEventListener('change', function() {
+    document.getElementById('trendChart').remove();
+    const canvas = document.createElement('canvas');
+    canvas.id = 'trendChart';
+    canvas.height = 120;
+    document.querySelector('#trendChart').parentElement.appendChild(canvas);
+    loadCharts();
+});
+
+loadCharts();
+</script>
+{% endblock %}

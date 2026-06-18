@@ -81,6 +81,21 @@
                 <a class="nav-link {% if 'warning_dashboard' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'warning_dashboard' %}">
                     <i class="bi bi-bar-chart-steps"></i>预警处置看板
                 </a>
+                <a class="nav-link {% if 'prediction' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'prediction_dashboard' %}">
+                    <i class="bi bi-graph-up-arrow"></i>粮情预测
+                </a>
+                <a class="nav-link {% if 'allocation_suggestion' in request.resolver_match.url_name or 'allocation_execution' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'allocation_suggestion_list' %}">
+                    <i class="bi bi-arrow-left-right"></i>库存调拨
+                </a>
+                <a class="nav-link {% if 'allocation_config' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'allocation_config_list' %}">
+                    <i class="bi bi-gear-fill"></i>调拨配置
+                </a>
+                <a class="nav-link {% if 'inventory' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'inventory_list' %}">
+                    <i class="bi bi-box-seam"></i>库存变动
+                </a>
+                <a class="nav-link {% if 'allocation_analysis' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'allocation_analysis' %}">
+                    <i class="bi bi-pie-chart-fill"></i>决策分析
+                </a>
             </nav>
         </div>
         <div class="col-md-10 main-content">

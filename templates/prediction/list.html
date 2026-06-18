@@ -1,0 +1,152 @@
+{% extends 'base.html' %}
+{% block title %}预测列表 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-list-ul me-2"></i>粮情预测列表</h3>
+    <div class="d-flex gap-2">
+        <a href="{% url 'prediction_dashboard' %}" class="btn btn-outline-secondary"><i class="bi bi-speedometer2 me-1"></i>预测看板</a>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#generateModal">
+            <i class="bi bi-magic me-1"></i>生成预测
+        </button>
+    </div>
+</div>
+
+<div class="card stat-card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label small text-muted">预测周期</label>
+                <select name="horizon" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="7" {% if horizon_days == 7 %}selected{% endif %}>7天</option>
+                    <option value="14" {% if horizon_days == 14 %}selected{% endif %}>14天</option>
+                    <option value="30" {% if horizon_days == 30 %}selected{% endif %}>30天</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">粮仓</label>
+                <select name="granary" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="all" {% if selected_granary == 'all' %}selected{% endif %}>全部粮仓</option>
+                    {% for g in granaries %}
+                    <option value="{{ g.id }}" {% if selected_granary == g.id|stringformat:"i" %}selected{% endif %}>{{ g.code }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">风险等级</label>
+                <select name="risk_level" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="">全部等级</option>
+                    <option value="low" {% if selected_risk == 'low' %}selected{% endif %}>低风险</option>
+                    <option value="medium" {% if selected_risk == 'medium' %}selected{% endif %}>中风险</option>
+                    <option value="high" {% if selected_risk == 'high' %}selected{% endif %}>高风险</option>
+                </select>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card stat-card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>预测日期</th>
+                    <th>粮仓</th>
+                    <th>预测周期</th>
+                    <th>目标日期</th>
+                    <th>预测温度</th>
+                    <th>预测湿度</th>
+                    <th>综合风险</th>
+                    <th>风险等级</th>
+                    <th>预测库存</th>
+                    <th>置信度</th>
+                    <th>预警</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for p in predictions %}
+                <tr class="{% if p.is_high_risk %}table-danger{% elif p.is_inventory_pressure %}table-warning{% endif %}">
+                    <td class="small">{{ p.prediction_date|date:'Y-m-d' }}</td>
+                    <td>{{ p.granary.code }}</td>
+                    <td>{{ p.horizon_days }}天</td>
+                    <td class="small">{{ p.target_date|date:'Y-m-d' }}</td>
+                    <td>{{ p.predicted_temp|floatformat:1 }}℃</td>
+                    <td>{{ p.predicted_humidity|floatformat:1 }}%</td>
+                    <td>
+                        <strong {% if p.predicted_overall_risk >= 70 %}class="text-danger"{% elif p.predicted_overall_risk >= 30 %}class="text-warning"{% else %}class="text-success"{% endif %}>
+                            {{ p.predicted_overall_risk|floatformat:1 }}
+                        </strong>
+                    </td>
+                    <td>
+                        {% if p.predicted_risk_level == 'high' %}
+                        <span class="risk-badge risk-high">高</span>
+                        {% elif p.predicted_risk_level == 'medium' %}
+                        <span class="risk-badge risk-medium">中</span>
+                        {% else %}
+                        <span class="risk-badge risk-low">低</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ p.predicted_inventory|floatformat:1 }}吨</td>
+                    <td>
+                        <div class="progress" style="height:6px; width:60px; display:inline-block; vertical-align:middle;">
+                            <div class="progress-bar {% if p.confidence_score >= 80 %}bg-success{% elif p.confidence_score >= 60 %}bg-info{% else %}bg-warning{% endif %}" style="width:{{ p.confidence_score }}%"></div>
+                        </div>
+                        <small class="ms-1">{{ p.confidence_score }}%</small>
+                    </td>
+                    <td>
+                        {% if p.is_high_risk %}
+                        <span class="badge bg-danger">高风险</span>
+                        {% endif %}
+                        {% if p.is_inventory_pressure %}
+                        <span class="badge bg-warning">库存压力</span>
+                        {% endif %}
+                    </td>
+                    <td><a href="{% url 'prediction_detail' p.pk %}" class="btn btn-sm btn-outline-primary">详情</a></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="12" class="text-center text-muted py-4">暂无预测数据</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="generateModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="{% url 'prediction_generate' %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">生成粮情预测</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">预测周期</label>
+                        <select name="horizon_days" class="form-select">
+                            <option value="7">7天</option>
+                            <option value="14">14天</option>
+                            <option value="30">30天</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">粮仓</label>
+                        <select name="granary" class="form-select">
+                            <option value="">全部粮仓</option>
+                            {% for g in granaries %}
+                            <option value="{{ g.id }}">{{ g.code }} - {{ g.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">生成预测</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

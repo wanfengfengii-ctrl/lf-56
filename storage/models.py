@@ -431,3 +431,269 @@ class WarningNotifyLog(models.Model):
 
     def __str__(self):
         return f'{self.warning} - {self.notify_method}'
+
+
+class InventoryChangeLog(models.Model):
+    CHANGE_TYPE_CHOICES = (
+        ('in', '入库'),
+        ('out', '出库'),
+        ('transfer_in', '调拨入库'),
+        ('transfer_out', '调拨出库'),
+        ('adjust', '库存调整'),
+    )
+
+    granary = models.ForeignKey(Granary, on_delete=models.CASCADE,
+                                verbose_name='粮仓', related_name='inventory_changes')
+    change_date = models.DateField('变动日期')
+    change_type = models.CharField('变动类型', max_length=20, choices=CHANGE_TYPE_CHOICES)
+    quantity = models.FloatField('变动数量(吨)')
+    balance_after = models.FloatField('变动后库存(吨)')
+    grain_type = models.ForeignKey(GrainType, on_delete=models.PROTECT,
+                                   verbose_name='粮食品类', related_name='inventory_changes')
+    operator = models.CharField('操作人', max_length=50, blank=True, null=True)
+    remark = models.TextField('备注', blank=True, null=True)
+    related_allocation = models.ForeignKey('AllocationExecution', on_delete=models.SET_NULL,
+                                           verbose_name='关联调拨单', blank=True, null=True,
+                                           related_name='inventory_logs')
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+
+    class Meta:
+        db_table = 'inventory_change_log'
+        verbose_name = '库存变动记录'
+        verbose_name_plural = verbose_name
+        ordering = ['-change_date', '-created_at']
+
+    def __str__(self):
+        return f'{self.granary.code} {self.get_change_type_display()} {self.quantity}吨'
+
+    def clean(self):
+        if self.quantity is not None and self.quantity == 0:
+            raise ValidationError({'quantity': '变动数量不能为0'})
+        if self.balance_after is not None and self.balance_after < 0:
+            raise ValidationError({'balance_after': '变动后库存不能为负数'})
+
+
+class GrainSituationPrediction(models.Model):
+    PREDICTION_HORIZON_CHOICES = (
+        (7, '7天'),
+        (14, '14天'),
+        (30, '30天'),
+    )
+    TREND_CHOICES = (
+        ('improving', '好转'),
+        ('stable', '稳定'),
+        ('deteriorating', '恶化'),
+    )
+
+    granary = models.ForeignKey(Granary, on_delete=models.CASCADE,
+                                verbose_name='粮仓', related_name='predictions')
+    prediction_date = models.DateField('预测日期')
+    horizon_days = models.IntegerField('预测周期(天)', choices=PREDICTION_HORIZON_CHOICES, default=7)
+    target_date = models.DateField('预测目标日期')
+
+    predicted_temp = models.FloatField('预测温度(℃)', blank=True, null=True)
+    predicted_humidity = models.FloatField('预测湿度(%)', blank=True, null=True)
+    predicted_pest_density = models.FloatField('预测虫害密度(头/公斤)', blank=True, null=True)
+    predicted_mold_risk = models.FloatField('预测霉变风险评分', default=0.0)
+    predicted_pest_risk = models.FloatField('预测虫害风险评分', default=0.0)
+    predicted_overall_risk = models.FloatField('预测综合风险评分', default=0.0)
+    predicted_risk_level = models.CharField('预测风险等级', max_length=20,
+                                             choices=RiskAssessment.RISK_LEVEL_CHOICES, default='low')
+    predicted_inventory = models.FloatField('预测库存(吨)', blank=True, null=True)
+
+    temp_trend = models.CharField('温度趋势', max_length=20, choices=TREND_CHOICES, default='stable')
+    humidity_trend = models.CharField('湿度趋势', max_length=20, choices=TREND_CHOICES, default='stable')
+    risk_trend = models.CharField('风险趋势', max_length=20, choices=TREND_CHOICES, default='stable')
+    inventory_trend = models.CharField('库存趋势', max_length=20, choices=TREND_CHOICES, default='stable')
+
+    confidence_score = models.FloatField('预测置信度(0-100)', default=80.0)
+    is_high_risk = models.BooleanField('是否高风险预警', default=False)
+    is_inventory_pressure = models.BooleanField('是否库存压力', default=False)
+    warning_message = models.TextField('预警提示', blank=True, null=True)
+
+    model_version = models.CharField('预测模型版本', max_length=50, default='v1.0')
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+
+    class Meta:
+        db_table = 'grain_situation_prediction'
+        verbose_name = '粮情预测'
+        verbose_name_plural = verbose_name
+        unique_together = ('granary', 'prediction_date', 'horizon_days', 'target_date')
+        ordering = ['-prediction_date', '-created_at']
+
+    def __str__(self):
+        return f'{self.granary.code} {self.prediction_date} 预测{self.horizon_days}天'
+
+    def clean(self):
+        if self.confidence_score is not None:
+            if self.confidence_score < 0 or self.confidence_score > 100:
+                raise ValidationError({'confidence_score': '置信度必须在0-100之间'})
+
+
+class AllocationConfig(models.Model):
+    PRIORITY_RULE_CHOICES = (
+        ('risk_first', '风险优先'),
+        ('inventory_first', '库存优先'),
+        ('distance_first', '距离优先'),
+        ('balanced', '综合平衡'),
+    )
+
+    name = models.CharField('配置名称', max_length=100, unique=True)
+    description = models.TextField('配置描述', blank=True, null=True)
+    is_default = models.BooleanField('是否默认配置', default=False)
+
+    safety_stock_ratio = models.FloatField('安全库存比例(%)', default=30.0,
+                                           help_text='相对于设计容量的安全库存比例')
+    min_transfer_quantity = models.FloatField('最小调拨数量(吨)', default=10.0)
+    max_transfer_quantity = models.FloatField('最大调拨数量(吨)', default=500.0)
+    priority_rule = models.CharField('调拨优先级规则', max_length=30,
+                                     choices=PRIORITY_RULE_CHOICES, default='balanced')
+    risk_weight = models.FloatField('风险权重', default=0.4, help_text='0-1之间')
+    inventory_weight = models.FloatField('库存权重', default=0.4, help_text='0-1之间')
+    distance_weight = models.FloatField('距离权重', default=0.2, help_text='0-1之间')
+
+    high_risk_threshold = models.FloatField('高风险阈值', default=70.0,
+                                            help_text='综合风险评分高于此值视为高风险')
+    low_inventory_threshold = models.FloatField('低库存阈值(%)', default=20.0,
+                                                help_text='库存占容量比例低于此值视为库存不足')
+    high_inventory_threshold = models.FloatField('高库存阈值(%)', default=85.0,
+                                                 help_text='库存占容量比例高于此值视为库存过高')
+
+    allow_cross_grain_type = models.BooleanField('允许跨品类调拨', default=False)
+    auto_approve_below = models.FloatField('自动审批阈值(吨)', default=50.0,
+                                           help_text='低于此数量的调拨建议自动批准')
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        db_table = 'allocation_config'
+        verbose_name = '调拨配置'
+        verbose_name_plural = verbose_name
+        ordering = ['-is_default', '-created_at']
+
+    def __str__(self):
+        return f'{self.name}{"(默认)" if self.is_default else ""}'
+
+    def clean(self):
+        total_weight = (self.risk_weight or 0) + (self.inventory_weight or 0) + (self.distance_weight or 0)
+        if abs(total_weight - 1.0) > 0.01:
+            raise ValidationError('风险、库存、距离权重之和必须等于1')
+        if self.low_inventory_threshold >= self.high_inventory_threshold:
+            raise ValidationError({'low_inventory_threshold': '低库存阈值必须小于高库存阈值'})
+        if self.min_transfer_quantity >= self.max_transfer_quantity:
+            raise ValidationError({'min_transfer_quantity': '最小调拨数量必须小于最大调拨数量'})
+
+
+class AllocationSuggestion(models.Model):
+    STATUS_CHOICES = (
+        ('pending', '待审核'),
+        ('approved', '已批准'),
+        ('rejected', '已拒绝'),
+        ('executed', '已执行'),
+        ('cancelled', '已取消'),
+    )
+
+    source_granary = models.ForeignKey(Granary, on_delete=models.CASCADE,
+                                       verbose_name='源粮仓', related_name='outbound_suggestions')
+    target_granary = models.ForeignKey(Granary, on_delete=models.CASCADE,
+                                       verbose_name='目标粮仓', related_name='inbound_suggestions')
+    grain_type = models.ForeignKey(GrainType, on_delete=models.PROTECT,
+                                   verbose_name='粮食品类', related_name='allocation_suggestions')
+
+    suggested_quantity = models.FloatField('建议调拨数量(吨)')
+    priority_score = models.FloatField('优先级评分(0-100)', default=0.0)
+    priority_level = models.CharField('优先级', max_length=20,
+                                       choices=DisposalTask.PRIORITY_CHOICES, default='normal')
+    reason = models.TextField('调拨原因')
+    expected_benefit = models.TextField('预期效益', blank=True, null=True)
+
+    source_risk_score = models.FloatField('源仓风险评分', default=0.0)
+    target_risk_score = models.FloatField('目标仓风险评分', default=0.0)
+    source_inventory_ratio = models.FloatField('源仓库存占比(%)', default=0.0)
+    target_inventory_ratio = models.FloatField('目标仓库存占比(%)', default=0.0)
+
+    status = models.CharField('状态', max_length=20, choices=STATUS_CHOICES, default='pending')
+    config = models.ForeignKey(AllocationConfig, on_delete=models.SET_NULL,
+                               verbose_name='使用配置', blank=True, null=True)
+    prediction = models.ForeignKey(GrainSituationPrediction, on_delete=models.SET_NULL,
+                                    verbose_name='关联预测', blank=True, null=True)
+
+    approved_by = models.CharField('审批人', max_length=50, blank=True, null=True)
+    approved_at = models.DateTimeField('审批时间', blank=True, null=True)
+    approval_opinion = models.TextField('审批意见', blank=True, null=True)
+
+    created_by = models.CharField('创建人', max_length=50, default='系统')
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        db_table = 'allocation_suggestion'
+        verbose_name = '调拨建议'
+        verbose_name_plural = verbose_name
+        ordering = ['-priority_score', '-created_at']
+
+    def __str__(self):
+        return f'{self.source_granary.code}→{self.target_granary.code} {self.suggested_quantity}吨'
+
+    def clean(self):
+        if self.source_granary_id == self.target_granary_id:
+            raise ValidationError({'target_granary': '目标粮仓不能与源粮仓相同'})
+        if self.suggested_quantity <= 0:
+            raise ValidationError({'suggested_quantity': '调拨数量必须大于0'})
+
+
+class AllocationExecution(models.Model):
+    STATUS_CHOICES = (
+        ('scheduled', '已计划'),
+        ('loading', '装货中'),
+        ('in_transit', '运输中'),
+        ('unloading', '卸货中'),
+        ('completed', '已完成'),
+        ('cancelled', '已取消'),
+    )
+
+    suggestion = models.OneToOneField(AllocationSuggestion, on_delete=models.PROTECT,
+                                      verbose_name='关联调拨建议', related_name='execution')
+    execution_no = models.CharField('调拨单号', max_length=50, unique=True)
+    status = models.CharField('执行状态', max_length=20, choices=STATUS_CHOICES, default='scheduled')
+
+    actual_quantity = models.FloatField('实际调拨数量(吨)', blank=True, null=True)
+    estimated_departure = models.DateTimeField('预计出发时间', blank=True, null=True)
+    actual_departure = models.DateTimeField('实际出发时间', blank=True, null=True)
+    estimated_arrival = models.DateTimeField('预计到达时间', blank=True, null=True)
+    actual_arrival = models.DateTimeField('实际到达时间', blank=True, null=True)
+
+    transporter = models.CharField('运输单位', max_length=100, blank=True, null=True)
+    vehicle_no = models.CharField('车牌号', max_length=50, blank=True, null=True)
+    driver = models.CharField('司机', max_length=50, blank=True, null=True)
+    driver_phone = models.CharField('司机电话', max_length=20, blank=True, null=True)
+
+    operator = models.CharField('执行人', max_length=50, blank=True, null=True)
+    quality_check_result = models.TextField('质检结果', blank=True, null=True)
+    loss_quantity = models.FloatField('损耗数量(吨)', default=0.0)
+    remark = models.TextField('备注', blank=True, null=True)
+
+    completed_at = models.DateTimeField('完成时间', blank=True, null=True)
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        db_table = 'allocation_execution'
+        verbose_name = '调拨执行'
+        verbose_name_plural = verbose_name
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.execution_no} - {self.get_status_display()}'
+
+    def get_transit_hours(self):
+        if self.actual_departure and self.actual_arrival:
+            delta = self.actual_arrival - self.actual_departure
+            return round(delta.total_seconds() / 3600, 2)
+        return None
+
+    def clean(self):
+        if self.actual_departure and self.actual_arrival and self.actual_arrival < self.actual_departure:
+            raise ValidationError({'actual_arrival': '实际到达时间不能早于出发时间'})
+        if self.loss_quantity < 0:
+            raise ValidationError({'loss_quantity': '损耗数量不能为负数'})

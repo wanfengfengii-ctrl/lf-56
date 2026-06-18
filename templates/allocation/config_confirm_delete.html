@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% block title %}删除调拨配置 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-trash me-2"></i>删除调拨配置</h3>
+    <a href="{% url 'allocation_config_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回列表</a>
+</div>
+
+<div class="card stat-card border-danger">
+    <div class="card-body">
+        <div class="alert alert-warning">
+            <h5><i class="bi bi-exclamation-triangle-fill me-2"></i>确认删除</h5>
+            <p class="mb-0">您确定要删除调拨配置 <strong>"{{ object.name }}"</strong> 吗？此操作不可撤销。</p>
+        </div>
+        <dl class="row">
+            <dt class="col-sm-3">配置名称</dt>
+            <dd class="col-sm-9">{{ object.name }}</dd>
+            <dt class="col-sm-3">安全库存比例</dt>
+            <dd class="col-sm-9">{{ object.safety_stock_ratio }}%</dd>
+            <dt class="col-sm-3">调拨数量范围</dt>
+            <dd class="col-sm-9">{{ object.min_transfer_quantity }} - {{ object.max_transfer_quantity }}吨</dd>
+            <dt class="col-sm-3">优先级规则</dt>
+            <dd class="col-sm-9">{{ object.get_priority_rule_display }}</dd>
+            <dt class="col-sm-3">创建时间</dt>
+            <dd class="col-sm-9">{{ object.created_at|date:'Y-m-d H:i' }}</dd>
+        </dl>
+        <form method="post">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger me-2"><i class="bi bi-trash me-1"></i>确认删除</button>
+            <a href="{% url 'allocation_config_list' %}" class="btn btn-secondary">取消</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

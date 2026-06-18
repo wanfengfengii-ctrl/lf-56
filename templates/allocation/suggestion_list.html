@@ -1,0 +1,136 @@
+{% extends 'base.html' %}
+{% block title %}调拨建议 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-lightbulb me-2"></i>调拨建议列表</h3>
+    <form method="post" action="{% url 'allocation_generate' %}" class="d-inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-primary"><i class="bi bi-magic me-1"></i>生成调拨建议</button>
+    </form>
+</div>
+
+<div class="card stat-card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small text-muted">状态</label>
+                <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="">全部状态</option>
+                    <option value="pending" {% if selected_status == 'pending' %}selected{% endif %}>待审批</option>
+                    <option value="approved" {% if selected_status == 'approved' %}selected{% endif %}>已批准</option>
+                    <option value="rejected" {% if selected_status == 'rejected' %}selected{% endif %}>已拒绝</option>
+                    <option value="executed" {% if selected_status == 'executed' %}selected{% endif %}>已执行</option>
+                    <option value="cancelled" {% if selected_status == 'cancelled' %}selected{% endif %}>已取消</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted">优先级</label>
+                <select name="priority" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="">全部优先级</option>
+                    <option value="high" {% if selected_priority == 'high' %}selected{% endif %}>高</option>
+                    <option value="medium" {% if selected_priority == 'medium' %}selected{% endif %}>中</option>
+                    <option value="low" {% if selected_priority == 'low' %}selected{% endif %}>低</option>
+                </select>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card stat-card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>建议编号</th>
+                    <th>优先级</th>
+                    <th>源粮仓</th>
+                    <th>目的粮仓</th>
+                    <th>粮食品类</th>
+                    <th>建议数量</th>
+                    <th>预估收益</th>
+                    <th>状态</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for s in suggestions %}
+                <tr>
+                    <td><a href="{% url 'allocation_suggestion_detail' s.pk %}"><strong>{{ s.suggestion_no }}</strong></a></td>
+                    <td>
+                        {% if s.priority == 'high' %}
+                        <span class="badge bg-danger">高</span>
+                        {% elif s.priority == 'medium' %}
+                        <span class="badge bg-warning text-dark">中</span>
+                        {% else %}
+                        <span class="badge bg-info">低</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ s.source_granary.code }}</td>
+                    <td>{{ s.target_granary.code }}</td>
+                    <td>{{ s.grain_type.name }}</td>
+                    <td>{{ s.suggested_quantity|floatformat:2 }}吨</td>
+                    <td>
+                        <small class="text-success"><i class="bi bi-graph-up-arrow"></i> 风险降低 {{ s.estimated_risk_reduction|floatformat:1 }}%</small>
+                    </td>
+                    <td>
+                        {% if s.status == 'pending' %}
+                        <span class="badge bg-secondary">待审批</span>
+                        {% elif s.status == 'approved' %}
+                        <span class="badge bg-success">已批准</span>
+                        {% elif s.status == 'rejected' %}
+                        <span class="badge bg-danger">已拒绝</span>
+                        {% elif s.status == 'executed' %}
+                        <span class="badge bg-primary">已执行</span>
+                        {% else %}
+                        <span class="badge bg-secondary">{{ s.get_status_display }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="small">{{ s.created_at|date:'Y-m-d H:i' }}</td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <a href="{% url 'allocation_suggestion_detail' s.pk %}" class="btn btn-outline-primary">详情</a>
+                            {% if s.status == 'pending' %}
+                            <form method="post" action="{% url 'allocation_suggestion_approve' s.pk %}" class="d-inline" onsubmit="return confirm('确定批准此调拨建议？');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-success">批准</button>
+                            </form>
+                            <form method="post" action="{% url 'allocation_suggestion_reject' s.pk %}" class="d-inline" onsubmit="return confirm('确定拒绝此调拨建议？');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-danger">拒绝</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="10" class="text-center text-muted py-4">暂无调拨建议，点击上方"生成调拨建议"按钮创建</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% if is_paginated %}
+    <div class="card-footer bg-white border-top">
+        <nav>
+            <ul class="pagination pagination-sm mb-0 justify-content-center">
+                {% if page_obj.has_previous %}
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">上一页</a></li>
+                {% endif %}
+                {% for p in page_obj.paginator.page_range %}
+                {% if p == page_obj.number %}
+                <li class="page-item active"><span class="page-link">{{ p }}</span></li>
+                {% else %}
+                <li class="page-item"><a class="page-link" href="?page={{ p }}">{{ p }}</a></li>
+                {% endif %}
+                {% endfor %}
+                {% if page_obj.has_next %}
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">下一页</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
