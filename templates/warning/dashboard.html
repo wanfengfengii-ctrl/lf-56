@@ -223,8 +223,7 @@
 <script>
 function loadTrendChart() {
     const params = new URLSearchParams(window.location.search);
-    const days = params.get('days') || 30;
-    fetch('/api/warning-trend/?days=' + days).then(r => r.json()).then(data => {
+    fetch('/api/warning-trend/?' + params.toString()).then(r => r.json()).then(data => {
         const ctx = document.getElementById('trendChart');
         new Chart(ctx, {
             type: 'line',

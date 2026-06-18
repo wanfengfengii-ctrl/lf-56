@@ -571,9 +571,18 @@ class WarningStatisticsService:
         return sorted(result.values(), key=lambda x: -x['total'])
 
     @staticmethod
-    def get_by_date_trend(days=30):
-        end_date = date.today()
-        start_date = end_date - timedelta(days=days - 1)
+    def get_by_date_trend(days=30, start_date=None, end_date=None):
+        if start_date and end_date:
+            pass
+        elif end_date:
+            start_date = end_date - timedelta(days=days - 1)
+        elif start_date:
+            end_date = start_date + timedelta(days=days - 1)
+        else:
+            end_date = date.today()
+            start_date = end_date - timedelta(days=days - 1)
+
+        delta_days = (end_date - start_date).days + 1
 
         qs = Warning.objects.filter(
             warning_time__date__gte=start_date,
@@ -586,7 +595,7 @@ class WarningStatisticsService:
             count=Count('id')
         ).order_by('date')
 
-        date_list = [start_date + timedelta(days=i) for i in range(days)]
+        date_list = [start_date + timedelta(days=i) for i in range(delta_days)]
         result = []
         data_map = {}
         for item in data:

@@ -733,6 +733,11 @@ class WarningListView(ListView):
         filter_form = WarningFilterForm(self.request.GET or None)
         ctx['filter_form'] = filter_form
         ctx['today'] = date.today()
+        query_params = self.request.GET.copy()
+        query_params.pop('page', None)
+        ctx['query_string'] = query_params.urlencode()
+        if ctx['query_string']:
+            ctx['query_string'] = '&' + ctx['query_string']
         return ctx
 
 
@@ -919,6 +924,11 @@ class TaskListView(ListView):
         ctx = super().get_context_data(**kwargs)
         ctx['selected_status'] = self.request.GET.get('status', '')
         ctx['selected_assignee'] = self.request.GET.get('assignee', '')
+        query_params = self.request.GET.copy()
+        query_params.pop('page', None)
+        ctx['query_string'] = query_params.urlencode()
+        if ctx['query_string']:
+            ctx['query_string'] = '&' + ctx['query_string']
         return ctx
 
 
@@ -955,7 +965,17 @@ def warning_dashboard(request):
 
 def warning_trend_api(request):
     days = int(request.GET.get('days', 30))
-    trend = WarningStatisticsService.get_by_date_trend(days)
+    start_date_str = request.GET.get('start_date')
+    end_date_str = request.GET.get('end_date')
+    start_date = None
+    end_date = None
+    if start_date_str:
+        from datetime import datetime
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+    if end_date_str:
+        from datetime import datetime
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+    trend = WarningStatisticsService.get_by_date_trend(days, start_date, end_date)
     return JsonResponse({
         'labels': [t['label'] for t in trend],
         'level1': [t['level1'] for t in trend],
