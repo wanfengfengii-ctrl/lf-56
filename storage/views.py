@@ -1427,3 +1427,105 @@ def api_inventory_turnover(request):
         'turnover_rate': [d['turnover_rate'] for d in data],
         'ratios': [d['ratio'] for d in data],
     })
+
+
+def api_allocation_trend(request):
+    period = int(request.GET.get('period', 30))
+    from django.utils import timezone
+    from datetime import timedelta
+    end_date = timezone.now()
+    start_date = end_date - timedelta(days=period)
+    executions = AllocationExecution.objects.filter(created_at__gte=start_date, created_at__lte=end_date)
+    date_map = {}
+    for ex in executions:
+        d = ex.created_at.strftime('%Y-%m-%d')
+        if d not in date_map:
+            date_map[d] = {'count': 0, 'quantity': 0.0}
+        date_map[d]['count'] += 1
+        date_map[d]['quantity'] += ex.actual_quantity or ex.suggestion.suggested_quantity
+    sorted_dates = sorted(date_map.keys())
+    return JsonResponse({
+        'labels': sorted_dates,
+        'quantities': [round(date_map[d]['quantity'], 2) for d in sorted_dates],
+        'counts': [date_map[d]['count'] for d in sorted_dates],
+    })
+
+
+def api_allocation_status(request):
+    period = int(request.GET.get('period', 30))
+    from django.utils import timezone
+    from datetime import timedelta
+    start_date = timezone.now() - timedelta(days=period)
+    suggestions = AllocationSuggestion.objects.filter(created_at__gte=start_date)
+    status_counts = {}
+    for s in suggestions:
+        label = s.get_status_display()
+        status_counts[label] = status_counts.get(label, 0) + 1
+    return JsonResponse({
+        'labels': list(status_counts.keys()),
+        'data': list(status_counts.values()),
+    })
+
+
+def api_turnover_trend(request):
+    period = int(request.GET.get('period', 30))
+    data = PredictionStatisticsService.get_inventory_turnover_stats(period)
+    return JsonResponse({
+        'labels': [d['code'] for d in data],
+        'rates': [round(d['turnover_rate'], 2) for d in data],
+    })
+
+
+def api_granary_turnover(request):
+    period = int(request.GET.get('period', 30))
+    data = PredictionStatisticsService.get_allocation_by_granary(period)
+    return JsonResponse({
+        'labels': [d['code'] for d in data],
+        'in_quantities': [round(d.get('inbound', 0), 2) for d in data],
+        'out_quantities': [round(d.get('outbound', 0), 2) for d in data],
+    })
+
+
+def api_risk_reduction(request):
+    period = int(request.GET.get('period', 30))
+    from django.utils import timezone
+    from datetime import timedelta
+    end_date = timezone.now()
+    start_date = end_date - timedelta(days=period)
+    granaries = Granary.objects.all()
+    labels = []
+    risk_scores = []
+    reductions = []
+    for g in granaries:
+        latest_risk = RiskAssessment.objects.filter(granary=g).order_by('-assessment_date').first()
+        prev_risk = RiskAssessment.objects.filter(granary=g, assessment_date__lt=start_date).order_by('-assessment_date').first()
+        labels.append(g.code)
+        current_score = latest_risk.overall_risk if latest_risk else 0
+        risk_scores.append(round(current_score, 2))
+        if prev_risk and prev_risk.overall_risk > 0:
+            reduction = round((prev_risk.overall_risk - current_score) / prev_risk.overall_risk * 100, 1)
+        else:
+            reduction = 0
+        reductions.append(reduction)
+    return JsonResponse({
+        'labels': labels,
+        'risk_scores': risk_scores,
+        'reductions': reductions,
+    })
+
+
+def api_allocation_cost(request):
+    period = int(request.GET.get('period', 30))
+    from django.utils import timezone
+    from datetime import timedelta
+    start_date = timezone.now() - timedelta(days=period)
+    suggestions = AllocationSuggestion.objects.filter(created_at__gte=start_date)
+    date_map = {}
+    for s in suggestions:
+        d = s.created_at.strftime('%Y-%m-%d')
+        date_map[d] = date_map.get(d, 0) + s.suggested_quantity * 10
+    sorted_dates = sorted(date_map.keys())
+    return JsonResponse({
+        'labels': sorted_dates,
+        'costs': [round(date_map[d], 2) for d in sorted_dates],
+    })

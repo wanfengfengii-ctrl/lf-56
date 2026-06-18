@@ -10,17 +10,17 @@
     <div class="col-lg-8">
         <div class="card stat-card mb-4">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <span><strong>{{ object.suggestion_no }}</strong></span>
+                <span><strong>调拨建议 #{{ suggestion.pk }}</strong></span>
                 <div>
-                    {% if object.priority == 'high' %}
-                    <span class="badge bg-danger me-2">高优先级</span>
-                    {% elif object.priority == 'medium' %}
-                    <span class="badge bg-warning text-dark me-2">中优先级</span>
+                    {% if object.priority_level == 'urgent' %}
+                    <span class="badge bg-danger me-2">紧急</span>
+                    {% elif object.priority_level == 'high' %}
+                    <span class="badge bg-warning text-dark me-2">高优先级</span>
                     {% else %}
-                    <span class="badge bg-info me-2">低优先级</span>
+                    <span class="badge bg-info me-2">普通</span>
                     {% endif %}
                     {% if object.status == 'pending' %}
-                    <span class="badge bg-secondary">待审批</span>
+                    <span class="badge bg-secondary">待审核</span>
                     {% elif object.status == 'approved' %}
                     <span class="badge bg-success">已批准</span>
                     {% elif object.status == 'rejected' %}
@@ -28,7 +28,7 @@
                     {% elif object.status == 'executed' %}
                     <span class="badge bg-primary">已执行</span>
                     {% else %}
-                    <span class="badge bg-secondary">{{ object.get_status_display }}</span>
+                    <span class="badge bg-secondary">{{ suggestion.get_status_display }}</span>
                     {% endif %}
                 </div>
             </div>
@@ -37,67 +37,70 @@
                     <div class="col-md-5 text-center">
                         <div class="p-4 bg-light rounded-3">
                             <h6 class="text-muted mb-2">源粮仓</h6>
-                            <h4 class="mb-1">{{ object.source_granary.code }}</h4>
-                            <p class="text-muted small mb-0">{{ object.source_granary.name }}</p>
-                            <p class="small mt-2 mb-0">当前库存: <strong>{{ object.source_current_inventory|floatformat:2 }}</strong>吨</p>
-                            <p class="small mb-0">风险评分: <strong class="text-danger">{{ object.source_risk_score|floatformat:1 }}</strong></p>
+                            <h4 class="mb-1">{{ suggestion.source_granary.code }}</h4>
+                            <p class="text-muted small mb-0">{{ suggestion.source_granary.name }}</p>
+                            <p class="small mt-2 mb-0">库存占比: <strong>{{ suggestion.source_inventory_ratio|floatformat:1 }}%</strong></p>
+                            <p class="small mb-0">风险评分: <strong class="text-danger">{{ suggestion.source_risk_score|floatformat:1 }}</strong></p>
                         </div>
                     </div>
                     <div class="col-md-2 d-flex align-items-center justify-content-center">
                         <div class="text-center">
                             <i class="bi bi-arrow-right-circle-fill text-primary" style="font-size:2.5rem;"></i>
-                            <p class="small text-muted mt-2">{{ object.suggested_quantity|floatformat:2 }}吨</p>
+                            <p class="small text-muted mt-2">{{ suggestion.suggested_quantity|floatformat:2 }}吨</p>
                         </div>
                     </div>
                     <div class="col-md-5 text-center">
                         <div class="p-4 bg-light rounded-3">
                             <h6 class="text-muted mb-2">目的粮仓</h6>
-                            <h4 class="mb-1">{{ object.target_granary.code }}</h4>
-                            <p class="text-muted small mb-0">{{ object.target_granary.name }}</p>
-                            <p class="small mt-2 mb-0">当前库存: <strong>{{ object.target_current_inventory|floatformat:2 }}</strong>吨</p>
-                            <p class="small mb-0">风险评分: <strong class="text-warning">{{ object.target_risk_score|floatformat:1 }}</strong></p>
+                            <h4 class="mb-1">{{ suggestion.target_granary.code }}</h4>
+                            <p class="text-muted small mb-0">{{ suggestion.target_granary.name }}</p>
+                            <p class="small mt-2 mb-0">库存占比: <strong>{{ suggestion.target_inventory_ratio|floatformat:1 }}%</strong></p>
+                            <p class="small mb-0">风险评分: <strong class="text-warning">{{ suggestion.target_risk_score|floatformat:1 }}</strong></p>
                         </div>
                     </div>
                 </div>
 
                 <dl class="row">
                     <dt class="col-sm-3">粮食品类</dt>
-                    <dd class="col-sm-3">{{ object.grain_type.name }}</dd>
+                    <dd class="col-sm-3">{{ suggestion.grain_type.name }}</dd>
                     <dt class="col-sm-3">建议调拨数量</dt>
-                    <dd class="col-sm-3">{{ object.suggested_quantity|floatformat:2 }}吨</dd>
+                    <dd class="col-sm-3">{{ suggestion.suggested_quantity|floatformat:2 }}吨</dd>
 
-                    <dt class="col-sm-3">距离</dt>
-                    <dd class="col-sm-3">{{ object.distance|floatformat:2 }}公里</dd>
-                    <dt class="col-sm-3">预估调拨成本</dt>
-                    <dd class="col-sm-3">¥{{ object.estimated_cost|floatformat:2 }}</dd>
+                    <dt class="col-sm-3">优先级评分</dt>
+                    <dd class="col-sm-3"><strong class="text-primary">{{ suggestion.priority_score|floatformat:1 }}</strong></dd>
+                    <dt class="col-sm-3">源仓库存占比</dt>
+                    <dd class="col-sm-3">{{ suggestion.source_inventory_ratio|floatformat:1 }}%</dd>
 
-                    <dt class="col-sm-3">风险权重评分</dt>
-                    <dd class="col-sm-3">{{ object.risk_score|floatformat:2 }}</dd>
-                    <dt class="col-sm-3">库存权重评分</dt>
-                    <dd class="col-sm-3">{{ object.inventory_score|floatformat:2 }}</dd>
+                    <dt class="col-sm-3">源仓风险评分</dt>
+                    <dd class="col-sm-3 text-danger">{{ suggestion.source_risk_score|floatformat:1 }}</dd>
+                    <dt class="col-sm-3">目标仓风险评分</dt>
+                    <dd class="col-sm-3 text-warning">{{ suggestion.target_risk_score|floatformat:1 }}</dd>
 
-                    <dt class="col-sm-3">距离权重评分</dt>
-                    <dd class="col-sm-3">{{ object.distance_score|floatformat:2 }}</dd>
-                    <dt class="col-sm-3">综合评分</dt>
-                    <dd class="col-sm-3"><strong class="text-primary">{{ object.composite_score|floatformat:4 }}</strong></dd>
-
-                    <dt class="col-sm-3">预估风险降低</dt>
-                    <dd class="col-sm-3 text-success"><i class="bi bi-graph-down-arrow"></i> {{ object.estimated_risk_reduction|floatformat:1 }}%</dd>
-                    <dt class="col-sm-3">预估库存周转提升</dt>
-                    <dd class="col-sm-3 text-success"><i class="bi bi-graph-up-arrow"></i> {{ object.estimated_turnover_improvement|floatformat:1 }}%</dd>
+                    <dt class="col-sm-3">目标仓库存占比</dt>
+                    <dd class="col-sm-3">{{ suggestion.target_inventory_ratio|floatformat:1 }}%</dd>
+                    <dt class="col-sm-3">使用配置</dt>
+                    <dd class="col-sm-3">{{ suggestion.config.name|default:'-' }}</dd>
 
                     <dt class="col-sm-3">调拨原因</dt>
-                    <dd class="col-sm-9" colspan="3">{{ object.reason }}</dd>
+                    <dd class="col-sm-9">{{ suggestion.reason }}</dd>
+
+                    {% if object.expected_benefit %}
+                    <dt class="col-sm-3">预期效益</dt>
+                    <dd class="col-sm-9">{{ suggestion.expected_benefit }}</dd>
+                    {% endif %}
 
                     <dt class="col-sm-3">审批人</dt>
-                    <dd class="col-sm-3">{{ object.approved_by|default:'-' }}</dd>
+                    <dd class="col-sm-3">{{ suggestion.approved_by|default:'-' }}</dd>
                     <dt class="col-sm-3">审批时间</dt>
-                    <dd class="col-sm-3">{{ object.approved_at|default:'-'|date:'Y-m-d H:i' }}</dd>
+                    <dd class="col-sm-3">{{ suggestion.approved_at|default:'-'|date:'Y-m-d H:i' }}</dd>
+
+                    <dt class="col-sm-3">创建人</dt>
+                    <dd class="col-sm-3">{{ suggestion.created_by }}</dd>
+                    <dt class="col-sm-3">审批意见</dt>
+                    <dd class="col-sm-3">{{ suggestion.approval_opinion|default:'-' }}</dd>
 
                     <dt class="col-sm-3">创建时间</dt>
-                    <dd class="col-sm-3">{{ object.created_at|date:'Y-m-d H:i' }}</dd>
-                    <dt class="col-sm-3">审批备注</dt>
-                    <dd class="col-sm-3">{{ object.approval_remark|default:'-' }}</dd>
+                    <dd class="col-sm-9">{{ suggestion.created_at|date:'Y-m-d H:i' }}</dd>
                 </dl>
 
                 {% if object.status == 'pending' %}
@@ -113,17 +116,11 @@
                 </div>
                 {% endif %}
 
-                {% if object.status == 'approved' %}
-                <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
-                    <a href="{% url 'allocation_execute' object.pk %}" class="btn btn-primary"><i class="bi bi-play-circle me-1"></i>执行调拨</a>
-                </div>
-                {% endif %}
-
                 {% if object.execution %}
                 <div class="mt-4 pt-4 border-top">
                     <h6><i class="bi bi-file-text me-2"></i>关联执行记录</h6>
                     <a href="{% url 'allocation_execution_detail' object.execution.pk %}" class="btn btn-outline-primary btn-sm">
-                        {{ object.execution.execution_no }} - {{ object.execution.get_status_display }}
+                        {{ suggestion.execution.execution_no }} - {{ suggestion.execution.get_status_display }}
                     </a>
                 </div>
                 {% endif %}
@@ -133,25 +130,25 @@
 
     <div class="col-lg-4">
         <div class="card stat-card">
-            <div class="card-header"><i class="bi bi-bar-chart-fill me-2"></i>调拨收益分析</div>
+            <div class="card-header"><i class="bi bi-bar-chart-fill me-2"></i>调拨评分分析</div>
             <div class="card-body">
                 <canvas id="benefitChart" height="200"></canvas>
                 <hr>
                 <div class="d-flex justify-content-between small mb-2">
-                    <span class="text-muted">风险降低</span>
-                    <span class="text-success">+{{ object.estimated_risk_reduction|floatformat:1 }}%</span>
+                    <span class="text-muted">源仓风险评分</span>
+                    <span class="text-danger">{{ suggestion.source_risk_score|floatformat:1 }}</span>
                 </div>
                 <div class="d-flex justify-content-between small mb-2">
-                    <span class="text-muted">库存周转提升</span>
-                    <span class="text-success">+{{ object.estimated_turnover_improvement|floatformat:1 }}%</span>
+                    <span class="text-muted">目标仓风险评分</span>
+                    <span class="text-warning">{{ suggestion.target_risk_score|floatformat:1 }}</span>
                 </div>
                 <div class="d-flex justify-content-between small mb-2">
-                    <span class="text-muted">调拨成本</span>
-                    <span class="text-danger">¥{{ object.estimated_cost|floatformat:2 }}</span>
+                    <span class="text-muted">风险差值</span>
+                    <span class="text-success">{{ suggestion.source_risk_score|floatformat:1 }} - {{ suggestion.target_risk_score|floatformat:1 }}</span>
                 </div>
                 <div class="d-flex justify-content-between small">
-                    <span class="text-muted">预计综合收益</span>
-                    <span class="text-primary fw-bold">¥{{ object.estimated_benefit|floatformat:2 }}</span>
+                    <span class="text-muted">优先级综合评分</span>
+                    <span class="text-primary fw-bold">{{ suggestion.priority_score|floatformat:1 }}</span>
                 </div>
             </div>
         </div>
@@ -164,11 +161,11 @@
 new Chart(document.getElementById('benefitChart'), {
     type: 'bar',
     data: {
-        labels: ['风险降低', '周转提升', '综合收益'],
+        labels: ['源仓风险', '目标仓风险', '源仓库存占比', '目标仓库存占比', '优先级评分'],
         datasets: [{
-            label: '预估效果',
-            data: [{{ object.estimated_risk_reduction }}, {{ object.estimated_turnover_improvement }}, {{ object.estimated_benefit }}],
-            backgroundColor: ['rgba(40,167,69,0.7)', 'rgba(13,110,253,0.7)', 'rgba(13,202,240,0.7)'],
+            label: '评分',
+            data: [{{ suggestion.source_risk_score }}, {{ suggestion.target_risk_score }}, {{ suggestion.source_inventory_ratio }}, {{ suggestion.target_inventory_ratio }}, {{ suggestion.priority_score }}],
+            backgroundColor: ['rgba(220,53,69,0.7)', 'rgba(255,193,7,0.7)', 'rgba(13,110,253,0.7)', 'rgba(25,135,84,0.7)', 'rgba(13,202,240,0.7)'],
             borderRadius: 6
         }]
     },

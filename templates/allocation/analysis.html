@@ -5,9 +5,9 @@
     <h3 class="page-title mb-0"><i class="bi bi-graph-up-arrow me-2"></i>调拨效率与库存周转分析</h3>
     <div>
         <select id="periodSelect" class="form-select form-select-sm d-inline-block" style="width:auto;">
-            <option value="7" {% if period == 7 %}selected{% endif %}>近7天</option>
-            <option value="30" {% if period == 30 %}selected{% endif %}>近30天</option>
-            <option value="90" {% if period == 90 %}selected{% endif %}>近90天</option>
+            <option value="7" {% if days == 7 %}selected{% endif %}>近7天</option>
+            <option value="30" {% if days == 30 %}selected{% endif %}>近30天</option>
+            <option value="90" {% if days == 90 %}selected{% endif %}>近90天</option>
         </select>
     </div>
 </div>
@@ -18,7 +18,7 @@
             <div class="stat-card-body">
                 <div class="stat-card-icon"><i class="bi bi-truck"></i></div>
                 <div class="stat-card-content">
-                    <div class="stat-card-value">{{ stats.total_allocations }}</div>
+                    <div class="stat-card-value">{{ efficiency.total_allocations }}</div>
                     <div class="stat-card-label">总调拨次数</div>
                 </div>
             </div>
@@ -29,7 +29,7 @@
             <div class="stat-card-body">
                 <div class="stat-card-icon"><i class="bi bi-check2-circle"></i></div>
                 <div class="stat-card-content">
-                    <div class="stat-card-value">{{ stats.completed_allocations }}</div>
+                    <div class="stat-card-value">{{ efficiency.completed_count }}</div>
                     <div class="stat-card-label">已完成调拨</div>
                 </div>
             </div>
@@ -40,7 +40,7 @@
             <div class="stat-card-body">
                 <div class="stat-card-icon"><i class="bi bi-box-seam"></i></div>
                 <div class="stat-card-content">
-                    <div class="stat-card-value">{{ stats.total_quantity|floatformat:1 }}吨</div>
+                    <div class="stat-card-value">{{ efficiency.total_quantity|floatformat:1 }}吨</div>
                     <div class="stat-card-label">累计调拨数量</div>
                 </div>
             </div>
@@ -51,8 +51,8 @@
             <div class="stat-card-body">
                 <div class="stat-card-icon"><i class="bi bi-cash"></i></div>
                 <div class="stat-card-content">
-                    <div class="stat-card-value">¥{{ stats.total_cost|floatformat:0 }}</div>
-                    <div class="stat-card-label">累计调拨成本</div>
+                    <div class="stat-card-value">¥{{ efficiency.total_loss|floatformat:0 }}</div>
+                    <div class="stat-card-label">累计损耗</div>
                 </div>
             </div>
         </div>
@@ -65,8 +65,8 @@
             <div class="stat-card-body">
                 <div class="stat-card-icon"><i class="bi bi-exclamation-triangle"></i></div>
                 <div class="stat-card-content">
-                    <div class="stat-card-value">{{ stats.avg_risk_reduction|floatformat:1 }}%</div>
-                    <div class="stat-card-label">平均风险降低</div>
+                    <div class="stat-card-value">{{ efficiency.completion_rate|floatformat:1 }}%</div>
+                    <div class="stat-card-label">完成率</div>
                 </div>
             </div>
         </div>
@@ -76,8 +76,8 @@
             <div class="stat-card-body">
                 <div class="stat-card-icon"><i class="bi bi-arrow-repeat"></i></div>
                 <div class="stat-card-content">
-                    <div class="stat-card-value">{{ stats.avg_turnover_improvement|floatformat:1 }}%</div>
-                    <div class="stat-card-label">平均库存周转提升</div>
+                    <div class="stat-card-value">{{ efficiency.loss_rate|floatformat:1 }}%</div>
+                    <div class="stat-card-label">平均损耗率</div>
                 </div>
             </div>
         </div>
@@ -149,37 +149,21 @@
                 <thead>
                 <tr>
                     <th>粮仓</th>
-                    <th>调拨次数</th>
                     <th>调出总量</th>
                     <th>调入总量</th>
-                    <th>平均运输天数</th>
-                    <th>平均损耗率</th>
-                    <th>综合效率评分</th>
+                    <th>库存占比</th>
                 </tr>
                 </thead>
                 <tbody>
-                {% for g in granary_stats %}
+                {% for g in allocation_by_granary %}
                 <tr>
-                    <td><strong>{{ g.granary.code }} - {{ g.granary.name }}</strong></td>
-                    <td>{{ g.total_allocations }}</td>
-                    <td class="text-danger">{{ g.total_out|floatformat:2 }}吨</td>
-                    <td class="text-success">{{ g.total_in|floatformat:2 }}吨</td>
-                    <td>{{ g.avg_transit_days|floatformat:1 }}天</td>
-                    <td>
-                        {% if g.avg_loss_rate > 0.5 %}
-                        <span class="text-danger">{{ g.avg_loss_rate|floatformat:2 }}%</span>
-                        {% elif g.avg_loss_rate > 0.2 %}
-                        <span class="text-warning">{{ g.avg_loss_rate|floatformat:2 }}%</span>
-                        {% else %}
-                        <span class="text-success">{{ g.avg_loss_rate|floatformat:2 }}%</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        <strong class="text-primary">{{ g.efficiency_score|floatformat:2 }}</strong>
-                    </td>
+                    <td><strong>{{ g.code }} - {{ g.name }}</strong></td>
+                    <td>{{ g.outbound|floatformat:2 }}吨</td>
+                    <td>{{ g.inbound|floatformat:2 }}吨</td>
+                    <td>{{ g.ratio|floatformat:1 }}%</td>
                 </tr>
                 {% empty %}
-                <tr><td colspan="7" class="text-center text-muted py-4">暂无调拨数据</td></tr>
+                <tr><td colspan="4" class="text-center text-muted py-4">暂无调拨数据</td></tr>
                 {% endfor %}
                 </tbody>
             </table>
@@ -191,10 +175,10 @@
 {% block extra_js %}
 <script>
 document.getElementById('periodSelect').addEventListener('change', function() {
-    window.location.href = '{% url "allocation_analysis" %}?period=' + this.value;
+    window.location.href = '{% url "allocation_analysis" %}?days=' + this.value;
 });
 
-fetch('{% url "api_allocation_trend" %}?period={{ period }}')
+fetch('{% url "api_allocation_trend" %}?period={{ days }}')
     .then(r => r.json())
     .then(data => {
         new Chart(document.getElementById('allocationTrendChart'), {
@@ -233,7 +217,7 @@ fetch('{% url "api_allocation_trend" %}?period={{ period }}')
         });
     });
 
-fetch('{% url "api_allocation_status" %}?period={{ period }}')
+fetch('{% url "api_allocation_status" %}?period={{ days }}')
     .then(r => r.json())
     .then(data => {
         new Chart(document.getElementById('allocationStatusChart'), {
@@ -255,7 +239,7 @@ fetch('{% url "api_allocation_status" %}?period={{ period }}')
         });
     });
 
-fetch('{% url "api_turnover_trend" %}?period={{ period }}')
+fetch('{% url "api_turnover_trend" %}?period={{ days }}')
     .then(r => r.json())
     .then(data => {
         new Chart(document.getElementById('turnoverTrendChart'), {
@@ -278,7 +262,7 @@ fetch('{% url "api_turnover_trend" %}?period={{ period }}')
         });
     });
 
-fetch('{% url "api_granary_turnover" %}?period={{ period }}')
+fetch('{% url "api_granary_turnover" %}?period={{ days }}')
     .then(r => r.json())
     .then(data => {
         new Chart(document.getElementById('granaryTurnoverChart'), {
@@ -307,7 +291,7 @@ fetch('{% url "api_granary_turnover" %}?period={{ period }}')
         });
     });
 
-fetch('{% url "api_risk_reduction" %}?period={{ period }}')
+fetch('{% url "api_risk_reduction" %}?period={{ days }}')
     .then(r => r.json())
     .then(data => {
         new Chart(document.getElementById('riskReductionChart'), {
@@ -346,7 +330,7 @@ fetch('{% url "api_risk_reduction" %}?period={{ period }}')
         });
     });
 
-fetch('{% url "api_allocation_cost" %}?period={{ period }}')
+fetch('{% url "api_allocation_cost" %}?period={{ days }}')
     .then(r => r.json())
     .then(data => {
         new Chart(document.getElementById('costChart'), {

@@ -321,15 +321,23 @@
 
 {% block extra_js %}
 <script>
-function loadCharts() {
-    const horizon = {{ horizon_days }};
-    const granary = document.getElementById('trendGranary').value;
+const chartInstances = {};
 
+function destroyChart(id) {
+    if (chartInstances[id]) {
+        chartInstances[id].destroy();
+        delete chartInstances[id];
+    }
+}
+
+function loadStaticCharts() {
+    const horizon = {{ horizon_days }};
+
+    destroyChart('riskDistChart');
     fetch(`{% url 'api_risk_distribution' %}?horizon=${horizon}`)
         .then(r => r.json())
         .then(data => {
-            const ctx = document.getElementById('riskDistChart');
-            new Chart(ctx, {
+            chartInstances['riskDistChart'] = new Chart(document.getElementById('riskDistChart'), {
                 type: 'doughnut',
                 data: {
                     labels: ['低风险', '中风险', '高风险'],
@@ -345,11 +353,11 @@ function loadCharts() {
             });
         });
 
+    destroyChart('invDistChart');
     fetch(`{% url 'api_inventory_distribution' %}?horizon=${horizon}`)
         .then(r => r.json())
         .then(data => {
-            const ctx = document.getElementById('invDistChart');
-            new Chart(ctx, {
+            chartInstances['invDistChart'] = new Chart(document.getElementById('invDistChart'), {
                 type: 'bar',
                 data: {
                     labels: ['库存过低(<20%)', '库存正常', '库存过高(>85%)'],
@@ -366,13 +374,18 @@ function loadCharts() {
                 }
             });
         });
+}
 
+function loadTrendChart() {
+    const horizon = {{ horizon_days }};
+    const granary = document.getElementById('trendGranary').value;
+
+    destroyChart('trendChart');
     fetch(`{% url 'api_prediction_trend' %}?granary_id=${granary}&horizon=${horizon}&days=14`)
         .then(r => r.json())
         .then(data => {
-            const ctx = document.getElementById('trendChart');
             if (data.lines) {
-                new Chart(ctx, {
+                chartInstances['trendChart'] = new Chart(document.getElementById('trendChart'), {
                     type: 'line',
                     data: {
                         labels: data.labels,
@@ -385,7 +398,7 @@ function loadCharts() {
                     }
                 });
             } else {
-                new Chart(ctx, {
+                chartInstances['trendChart'] = new Chart(document.getElementById('trendChart'), {
                     type: 'line',
                     data: {
                         labels: data.labels,
@@ -409,14 +422,10 @@ function loadCharts() {
 }
 
 document.getElementById('trendGranary').addEventListener('change', function() {
-    document.getElementById('trendChart').remove();
-    const canvas = document.createElement('canvas');
-    canvas.id = 'trendChart';
-    canvas.height = 120;
-    document.querySelector('#trendChart').parentElement.appendChild(canvas);
-    loadCharts();
+    loadTrendChart();
 });
 
-loadCharts();
+loadStaticCharts();
+loadTrendChart();
 </script>
 {% endblock %}

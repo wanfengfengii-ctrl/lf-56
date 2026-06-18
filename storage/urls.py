@@ -64,6 +64,12 @@ urlpatterns = [
     path('api/allocation-efficiency/', views.api_allocation_efficiency, name='api_allocation_efficiency'),
     path('api/allocation-by-granary/', views.api_allocation_by_granary, name='api_allocation_by_granary'),
     path('api/inventory-turnover/', views.api_inventory_turnover, name='api_inventory_turnover'),
+    path('api/allocation-trend/', views.api_allocation_trend, name='api_allocation_trend'),
+    path('api/allocation-status/', views.api_allocation_status, name='api_allocation_status'),
+    path('api/turnover-trend/', views.api_turnover_trend, name='api_turnover_trend'),
+    path('api/granary-turnover/', views.api_granary_turnover, name='api_granary_turnover'),
+    path('api/risk-reduction/', views.api_risk_reduction, name='api_risk_reduction'),
+    path('api/allocation-cost/', views.api_allocation_cost, name='api_allocation_cost'),
 
     # Prediction views
     path('prediction/', views.prediction_dashboard, name='prediction_dashboard'),

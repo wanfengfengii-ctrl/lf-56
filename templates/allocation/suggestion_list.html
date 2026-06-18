@@ -3,7 +3,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h3 class="page-title mb-0"><i class="bi bi-lightbulb me-2"></i>调拨建议列表</h3>
-    <form method="post" action="{% url 'allocation_generate' %}" class="d-inline">
+    <form method="post" action="{% url 'allocation_suggestion_generate' %}" class="d-inline">
         {% csrf_token %}
         <button type="submit" class="btn btn-primary"><i class="bi bi-magic me-1"></i>生成调拨建议</button>
     </form>
@@ -16,7 +16,7 @@
                 <label class="form-label small text-muted">状态</label>
                 <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
                     <option value="">全部状态</option>
-                    <option value="pending" {% if selected_status == 'pending' %}selected{% endif %}>待审批</option>
+                    <option value="pending" {% if selected_status == 'pending' %}selected{% endif %}>待审核</option>
                     <option value="approved" {% if selected_status == 'approved' %}selected{% endif %}>已批准</option>
                     <option value="rejected" {% if selected_status == 'rejected' %}selected{% endif %}>已拒绝</option>
                     <option value="executed" {% if selected_status == 'executed' %}selected{% endif %}>已执行</option>
@@ -27,9 +27,9 @@
                 <label class="form-label small text-muted">优先级</label>
                 <select name="priority" class="form-select form-select-sm" onchange="this.form.submit()">
                     <option value="">全部优先级</option>
+                    <option value="urgent" {% if selected_priority == 'urgent' %}selected{% endif %}>紧急</option>
                     <option value="high" {% if selected_priority == 'high' %}selected{% endif %}>高</option>
-                    <option value="medium" {% if selected_priority == 'medium' %}selected{% endif %}>中</option>
-                    <option value="low" {% if selected_priority == 'low' %}selected{% endif %}>低</option>
+                    <option value="normal" {% if selected_priority == 'normal' %}selected{% endif %}>普通</option>
                 </select>
             </div>
         </form>
@@ -42,13 +42,13 @@
             <table class="table table-hover mb-0">
                 <thead>
                 <tr>
-                    <th>建议编号</th>
+                    <th>优先级评分</th>
                     <th>优先级</th>
                     <th>源粮仓</th>
                     <th>目的粮仓</th>
                     <th>粮食品类</th>
                     <th>建议数量</th>
-                    <th>预估收益</th>
+                    <th>源仓风险</th>
                     <th>状态</th>
                     <th>创建时间</th>
                     <th>操作</th>
@@ -57,14 +57,14 @@
                 <tbody>
                 {% for s in suggestions %}
                 <tr>
-                    <td><a href="{% url 'allocation_suggestion_detail' s.pk %}"><strong>{{ s.suggestion_no }}</strong></a></td>
+                    <td><strong>{{ s.priority_score|floatformat:1 }}</strong></td>
                     <td>
-                        {% if s.priority == 'high' %}
-                        <span class="badge bg-danger">高</span>
-                        {% elif s.priority == 'medium' %}
-                        <span class="badge bg-warning text-dark">中</span>
+                        {% if s.priority_level == 'urgent' %}
+                        <span class="badge bg-danger">紧急</span>
+                        {% elif s.priority_level == 'high' %}
+                        <span class="badge bg-warning text-dark">高</span>
                         {% else %}
-                        <span class="badge bg-info">低</span>
+                        <span class="badge bg-info">普通</span>
                         {% endif %}
                     </td>
                     <td>{{ s.source_granary.code }}</td>
@@ -72,11 +72,17 @@
                     <td>{{ s.grain_type.name }}</td>
                     <td>{{ s.suggested_quantity|floatformat:2 }}吨</td>
                     <td>
-                        <small class="text-success"><i class="bi bi-graph-up-arrow"></i> 风险降低 {{ s.estimated_risk_reduction|floatformat:1 }}%</small>
+                        {% if s.source_risk_score >= 7 %}
+                        <strong class="text-danger">{{ s.source_risk_score|floatformat:1 }}</strong>
+                        {% elif s.source_risk_score >= 4 %}
+                        <strong class="text-warning">{{ s.source_risk_score|floatformat:1 }}</strong>
+                        {% else %}
+                        <span class="text-success">{{ s.source_risk_score|floatformat:1 }}</span>
+                        {% endif %}
                     </td>
                     <td>
                         {% if s.status == 'pending' %}
-                        <span class="badge bg-secondary">待审批</span>
+                        <span class="badge bg-secondary">待审核</span>
                         {% elif s.status == 'approved' %}
                         <span class="badge bg-success">已批准</span>
                         {% elif s.status == 'rejected' %}

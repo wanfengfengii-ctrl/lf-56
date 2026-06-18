@@ -8,18 +8,22 @@
 
 <div class="card stat-card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
-        <span><strong>{{ object.execution_no }}</strong></span>
+        <span><strong>{{ execution.execution_no }}</strong></span>
         <div>
-            {% if object.status == 'pending' %}
-            <span class="badge bg-secondary">待执行</span>
-            {% elif object.status == 'in_transit' %}
+            {% if execution.status == 'scheduled' %}
+            <span class="badge bg-secondary">已计划</span>
+            {% elif execution.status == 'loading' %}
+            <span class="badge bg-info">装货中</span>
+            {% elif execution.status == 'in_transit' %}
             <span class="badge bg-warning text-dark">运输中</span>
-            {% elif object.status == 'completed' %}
+            {% elif execution.status == 'unloading' %}
+            <span class="badge bg-info">卸货中</span>
+            {% elif execution.status == 'completed' %}
             <span class="badge bg-success">已完成</span>
-            {% elif object.status == 'cancelled' %}
+            {% elif execution.status == 'cancelled' %}
             <span class="badge bg-danger">已取消</span>
             {% else %}
-            <span class="badge bg-secondary">{{ object.get_status_display }}</span>
+            <span class="badge bg-secondary">{{ execution.get_status_display }}</span>
             {% endif %}
         </div>
     </div>
@@ -28,26 +32,26 @@
             <div class="col-md-5 text-center">
                 <div class="p-4 bg-light rounded-3">
                     <h6 class="text-muted mb-2">源粮仓（调出）</h6>
-                    <h4 class="mb-1">{{ object.source_granary.code }}</h4>
-                    <p class="text-muted small mb-0">{{ object.source_granary.name }}</p>
-                    <p class="text-muted small mb-0">{{ object.source_granary.location }}</p>
+                    <h4 class="mb-1">{{ execution.suggestion.source_granary.code }}</h4>
+                    <p class="text-muted small mb-0">{{ execution.suggestion.source_granary.name }}</p>
+                    <p class="text-muted small mb-0">{{ execution.suggestion.source_granary.location }}</p>
                 </div>
             </div>
             <div class="col-md-2 d-flex align-items-center justify-content-center">
                 <div class="text-center">
                     <i class="bi bi-arrow-right-circle-fill text-primary" style="font-size:2.5rem;"></i>
-                    <p class="small text-muted mt-2">{{ object.planned_quantity|floatformat:2 }}吨</p>
-                    {% if object.actual_quantity %}
-                    <p class="small text-success">实发: {{ object.actual_quantity|floatformat:2 }}吨</p>
+                    <p class="small text-muted mt-2">{{ execution.suggestion.suggested_quantity|floatformat:2 }}吨</p>
+                    {% if execution.actual_quantity %}
+                    <p class="small text-success">实发: {{ execution.actual_quantity|floatformat:2 }}吨</p>
                     {% endif %}
                 </div>
             </div>
             <div class="col-md-5 text-center">
                 <div class="p-4 bg-light rounded-3">
                     <h6 class="text-muted mb-2">目的粮仓（调入）</h6>
-                    <h4 class="mb-1">{{ object.target_granary.code }}</h4>
-                    <p class="text-muted small mb-0">{{ object.target_granary.name }}</p>
-                    <p class="text-muted small mb-0">{{ object.target_granary.location }}</p>
+                    <h4 class="mb-1">{{ execution.suggestion.target_granary.code }}</h4>
+                    <p class="text-muted small mb-0">{{ execution.suggestion.target_granary.name }}</p>
+                    <p class="text-muted small mb-0">{{ execution.suggestion.target_granary.location }}</p>
                 </div>
             </div>
         </div>
@@ -55,90 +59,109 @@
         <div class="row mb-4">
             <div class="col-md-3 text-center">
                 <div class="p-3 bg-light rounded-3">
-                    <p class="small text-muted mb-1">计划日期</p>
-                    <h5 class="mb-0">{{ object.planned_date|date:'Y-m-d' }}</h5>
+                    <p class="small text-muted mb-1">预计出发</p>
+                    <h5 class="mb-0">{{ execution.estimated_departure|default:'-'|date:'Y-m-d H:i' }}</h5>
                 </div>
             </div>
             <div class="col-md-3 text-center">
                 <div class="p-3 bg-light rounded-3">
-                    <p class="small text-muted mb-1">出库日期</p>
-                    <h5 class="mb-0">{{ object.actual_out_date|default:'-'|date:'Y-m-d' }}</h5>
+                    <p class="small text-muted mb-1">实际出发</p>
+                    <h5 class="mb-0">{{ execution.actual_departure|default:'-'|date:'Y-m-d H:i' }}</h5>
                 </div>
             </div>
             <div class="col-md-3 text-center">
                 <div class="p-3 bg-light rounded-3">
-                    <p class="small text-muted mb-1">入库日期</p>
-                    <h5 class="mb-0">{{ object.actual_in_date|default:'-'|date:'Y-m-d' }}</h5>
+                    <p class="small text-muted mb-1">预计到达</p>
+                    <h5 class="mb-0">{{ execution.estimated_arrival|default:'-'|date:'Y-m-d H:i' }}</h5>
                 </div>
             </div>
             <div class="col-md-3 text-center">
                 <div class="p-3 bg-light rounded-3">
-                    <p class="small text-muted mb-1">运输时长</p>
-                    <h5 class="mb-0">
-                        {% if object.actual_out_date and object.actual_in_date %}
-                        {{ object.transit_days }}天
-                        {% else %}-{% endif %}
-                    </h5>
+                    <p class="small text-muted mb-1">实际到达</p>
+                    <h5 class="mb-0">{{ execution.actual_arrival|default:'-'|date:'Y-m-d H:i' }}</h5>
                 </div>
             </div>
         </div>
 
         <dl class="row">
             <dt class="col-sm-3">粮食品类</dt>
-            <dd class="col-sm-3">{{ object.grain_type.name }}</dd>
+            <dd class="col-sm-3">{{ execution.suggestion.grain_type.name }}</dd>
             <dt class="col-sm-3">计划调拨数量</dt>
-            <dd class="col-sm-3">{{ object.planned_quantity|floatformat:2 }}吨</dd>
+            <dd class="col-sm-3">{{ execution.suggestion.suggested_quantity|floatformat:2 }}吨</dd>
 
-            <dt class="col-sm-3">实际调出数量</dt>
-            <dd class="col-sm-3">{{ object.actual_quantity|default:'-'|floatformat:2 }}吨</dd>
-            <dt class="col-sm-3">实际入库数量</dt>
-            <dd class="col-sm-3">{{ object.received_quantity|default:'-'|floatformat:2 }}吨</dd>
-
-            {% if object.quantity_difference is not None %}
-            <dt class="col-sm-3">数量差异</dt>
+            <dt class="col-sm-3">实际调拨数量</dt>
+            <dd class="col-sm-3">{{ execution.actual_quantity|default:'-'|floatformat:2 }}吨</dd>
+            <dt class="col-sm-3">损耗数量</dt>
             <dd class="col-sm-3">
-                <span class="{% if object.quantity_difference > 0 %}text-danger{% elif object.quantity_difference < 0 %}text-warning{% else %}text-success{% endif %}">
-                    {% if object.quantity_difference > 0 %}+{% endif %}{{ object.quantity_difference|floatformat:2 }}吨
-                </span>
+                {% if execution.loss_quantity and execution.loss_quantity > 0 %}
+                <span class="text-danger">{{ execution.loss_quantity|floatformat:2 }}吨</span>
+                {% else %}
+                <span class="text-success">无损耗</span>
+                {% endif %}
             </dd>
-            {% endif %}
 
-            <dt class="col-sm-3">运输车辆</dt>
-            <dd class="col-sm-3">{{ object.transport_vehicle|default:'-' }}</dd>
-            <dt class="col-sm-3">运输成本</dt>
-            <dd class="col-sm-3">{% if object.actual_cost %}¥{{ object.actual_cost|floatformat:2 }}{% else %}-{% endif %}</dd>
+            <dt class="col-sm-3">运输时长</dt>
+            <dd class="col-sm-3">
+                {% if execution.get_transit_hours %}
+                {{ execution.get_transit_hours }}小时
+                {% else %}-{% endif %}
+            </dd>
+            <dt class="col-sm-3">运输单位</dt>
+            <dd class="col-sm-3">{{ execution.transporter|default:'-' }}</dd>
 
-            <dt class="col-sm-3">出库操作人</dt>
-            <dd class="col-sm-3">{{ object.out_operator|default:'-' }}</dd>
-            <dt class="col-sm-3">入库操作人</dt>
-            <dd class="col-sm-3">{{ object.in_operator|default:'-' }}</dd>
-
-            <dt class="col-sm-3">关联调拨建议</dt>
-            <dd class="col-sm-9">
-                {% if object.suggestion %}
-                <a href="{% url 'allocation_suggestion_detail' object.suggestion.pk %}">{{ object.suggestion.suggestion_no }}</a>
+            <dt class="col-sm-3">车牌号</dt>
+            <dd class="col-sm-3">{{ execution.vehicle_no|default:'-' }}</dd>
+            <dt class="col-sm-3">司机</dt>
+            <dd class="col-sm-3">
+                {% if execution.driver %}
+                {{ execution.driver }}{% if execution.driver_phone %} ({{ execution.driver_phone }}){% endif %}
                 {% else %}-{% endif %}
             </dd>
 
-            <dt class="col-sm-3">出库备注</dt>
-            <dd class="col-sm-3">{{ object.out_remark|default:'-' }}</dd>
-            <dt class="col-sm-3">入库备注</dt>
-            <dd class="col-sm-3">{{ object.in_remark|default:'-' }}</dd>
+            <dt class="col-sm-3">执行人</dt>
+            <dd class="col-sm-3">{{ execution.operator|default:'-' }}</dd>
+            <dt class="col-sm-3">质检结果</dt>
+            <dd class="col-sm-3">{{ execution.quality_check_result|default:'-' }}</dd>
+
+            <dt class="col-sm-3">关联调拨建议</dt>
+            <dd class="col-sm-9">
+                <a href="{% url 'allocation_suggestion_detail' execution.suggestion.pk %}">调拨建议 #{{ execution.suggestion.pk }}</a>
+            </dd>
+
+            <dt class="col-sm-3">备注</dt>
+            <dd class="col-sm-9">{{ execution.remark|default:'-' }}</dd>
         </dl>
 
-        {% if object.status == 'pending' %}
+        {% if execution.status == 'scheduled' %}
         <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
-            <form method="post" action="{% url 'allocation_execution_start' object.pk %}" onsubmit="return confirm('确定开始运输？');">
+            <form method="post" action="{% url 'allocation_execution_status' execution.pk %}" onsubmit="return confirm('确定开始装货？');">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-primary me-2"><i class="bi bi-play-circle me-1"></i>开始运输</button>
+                <input type="hidden" name="status" value="loading">
+                <button type="submit" class="btn btn-primary me-2"><i class="bi bi-play-circle me-1"></i>开始装货</button>
+            </form>
+            <form method="post" action="{% url 'allocation_execution_status' execution.pk %}" onsubmit="return confirm('确定取消？');">
+                {% csrf_token %}
+                <input type="hidden" name="status" value="cancelled">
+                <button type="submit" class="btn btn-danger"><i class="bi bi-x-circle me-1"></i>取消</button>
             </form>
         </div>
         {% endif %}
 
-        {% if object.status == 'in_transit' %}
+        {% if execution.status == 'loading' %}
         <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
-            <form method="post" action="{% url 'allocation_execution_complete' object.pk %}" onsubmit="return confirm('确定完成调拨？请确认已完成入库。');">
+            <form method="post" action="{% url 'allocation_execution_status' execution.pk %}" onsubmit="return confirm('确定开始运输？');">
                 {% csrf_token %}
+                <input type="hidden" name="status" value="in_transit">
+                <button type="submit" class="btn btn-warning"><i class="bi bi-truck me-1"></i>发车</button>
+            </form>
+        </div>
+        {% endif %}
+
+        {% if execution.status == 'in_transit' %}
+        <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4">
+            <form method="post" action="{% url 'allocation_execution_status' execution.pk %}" onsubmit="return confirm('确定完成调拨？');">
+                {% csrf_token %}
+                <input type="hidden" name="status" value="completed">
                 <button type="submit" class="btn btn-success"><i class="bi bi-check-circle me-1"></i>完成调拨</button>
             </form>
         </div>
@@ -146,21 +169,23 @@
     </div>
 </div>
 
-{% if object.status == 'completed' %}
+{% if execution.status == 'completed' %}
 <div class="card stat-card">
     <div class="card-header"><i class="bi bi-check2-circle me-2"></i>执行完成确认</div>
     <div class="card-body">
         <dl class="row">
             <dt class="col-sm-3">完成时间</dt>
-            <dd class="col-sm-9">{{ object.completed_at|date:'Y-m-d H:i' }}</dd>
-            <dt class="col-sm-3">实际运输天数</dt>
-            <dd class="col-sm-9">{{ object.transit_days|default:0 }}天</dd>
+            <dd class="col-sm-9">{{ execution.completed_at|date:'Y-m-d H:i' }}</dd>
+            <dt class="col-sm-3">实际运输时长</dt>
+            <dd class="col-sm-9">
+                {% if execution.get_transit_hours %}
+                {{ execution.get_transit_hours }}小时
+                {% else %}-{% endif %}
+            </dd>
             <dt class="col-sm-3">损耗情况</dt>
             <dd class="col-sm-9">
-                {% if object.quantity_difference > 0 %}
-                <span class="text-danger">损耗 {{ object.quantity_difference|floatformat:2 }}吨</span>
-                {% elif object.quantity_difference < 0 %}
-                <span class="text-warning">溢出 {{ object.quantity_difference|floatformat:2 }}吨</span>
+                {% if execution.loss_quantity and execution.loss_quantity > 0 %}
+                <span class="text-danger">损耗 {{ execution.loss_quantity|floatformat:2 }}吨</span>
                 {% else %}
                 <span class="text-success">无损耗</span>
                 {% endif %}

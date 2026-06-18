@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}调拨执行 - 粮仓风险监测系统{% endblock %}
+{% block title %}调拨执行记录 - 粮仓风险监测系统{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h3 class="page-title mb-0"><i class="bi bi-truck me-2"></i>调拨执行记录</h3>
@@ -12,8 +12,10 @@
                 <label class="form-label small text-muted">状态</label>
                 <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
                     <option value="">全部状态</option>
-                    <option value="pending" {% if selected_status == 'pending' %}selected{% endif %}>待执行</option>
+                    <option value="scheduled" {% if selected_status == 'scheduled' %}selected{% endif %}>已计划</option>
+                    <option value="loading" {% if selected_status == 'loading' %}selected{% endif %}>装货中</option>
                     <option value="in_transit" {% if selected_status == 'in_transit' %}selected{% endif %}>运输中</option>
+                    <option value="unloading" {% if selected_status == 'unloading' %}selected{% endif %}>卸货中</option>
                     <option value="completed" {% if selected_status == 'completed' %}selected{% endif %}>已完成</option>
                     <option value="cancelled" {% if selected_status == 'cancelled' %}selected{% endif %}>已取消</option>
                 </select>
@@ -29,13 +31,13 @@
                 <thead>
                 <tr>
                     <th>执行单号</th>
-                    <th>关联建议</th>
                     <th>源→目的</th>
                     <th>粮食品类</th>
                     <th>计划数量</th>
                     <th>实际数量</th>
+                    <th>损耗</th>
                     <th>状态</th>
-                    <th>计划日期</th>
+                    <th>预计出发</th>
                     <th>操作</th>
                 </tr>
                 </thead>
@@ -43,18 +45,13 @@
                 {% for e in executions %}
                 <tr>
                     <td><a href="{% url 'allocation_execution_detail' e.pk %}"><strong>{{ e.execution_no }}</strong></a></td>
-                    <td class="small">
-                        {% if e.suggestion %}
-                        <a href="{% url 'allocation_suggestion_detail' e.suggestion.pk %}">{{ e.suggestion.suggestion_no }}</a>
-                        {% else %}-{% endif %}
-                    </td>
                     <td>
-                        <span class="text-primary">{{ e.source_granary.code }}</span>
+                        <span class="text-primary">{{ e.suggestion.source_granary.code }}</span>
                         <i class="bi bi-arrow-right mx-1"></i>
-                        <span class="text-success">{{ e.target_granary.code }}</span>
+                        <span class="text-success">{{ e.suggestion.target_granary.code }}</span>
                     </td>
-                    <td>{{ e.grain_type.name }}</td>
-                    <td>{{ e.planned_quantity|floatformat:2 }}吨</td>
+                    <td>{{ e.suggestion.grain_type.name }}</td>
+                    <td>{{ e.suggestion.suggested_quantity|floatformat:2 }}吨</td>
                     <td>
                         {% if e.actual_quantity %}
                         {{ e.actual_quantity|floatformat:2 }}吨
@@ -63,10 +60,21 @@
                         {% endif %}
                     </td>
                     <td>
-                        {% if e.status == 'pending' %}
-                        <span class="badge bg-secondary">待执行</span>
+                        {% if e.loss_quantity and e.loss_quantity > 0 %}
+                        <span class="text-danger">{{ e.loss_quantity|floatformat:2 }}吨</span>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if e.status == 'scheduled' %}
+                        <span class="badge bg-secondary">已计划</span>
+                        {% elif e.status == 'loading' %}
+                        <span class="badge bg-info">装货中</span>
                         {% elif e.status == 'in_transit' %}
                         <span class="badge bg-warning text-dark">运输中</span>
+                        {% elif e.status == 'unloading' %}
+                        <span class="badge bg-info">卸货中</span>
                         {% elif e.status == 'completed' %}
                         <span class="badge bg-success">已完成</span>
                         {% elif e.status == 'cancelled' %}
@@ -75,19 +83,26 @@
                         <span class="badge bg-secondary">{{ e.get_status_display }}</span>
                         {% endif %}
                     </td>
-                    <td class="small">{{ e.planned_date|date:'Y-m-d' }}</td>
+                    <td class="small">{{ e.estimated_departure|default:'-'|date:'Y-m-d' }}</td>
                     <td>
                         <div class="btn-group btn-group-sm">
                             <a href="{% url 'allocation_execution_detail' e.pk %}" class="btn btn-outline-primary">详情</a>
-                            {% if e.status == 'pending' %}
-                            <form method="post" action="{% url 'allocation_execution_start' e.pk %}" class="d-inline" onsubmit="return confirm('确定开始运输？');">
+                            {% if e.status == 'scheduled' %}
+                            <form method="post" action="{% url 'allocation_execution_status' e.pk %}" class="d-inline" onsubmit="return confirm('确定开始装货？');">
                                 {% csrf_token %}
+                                <input type="hidden" name="status" value="loading">
                                 <button type="submit" class="btn btn-primary">开始</button>
                             </form>
-                            {% endif %}
-                            {% if e.status == 'in_transit' %}
-                            <form method="post" action="{% url 'allocation_execution_complete' e.pk %}" class="d-inline" onsubmit="return confirm('确定完成调拨？请确认已完成入库。');">
+                            {% elif e.status == 'loading' %}
+                            <form method="post" action="{% url 'allocation_execution_status' e.pk %}" class="d-inline" onsubmit="return confirm('确定开始运输？');">
                                 {% csrf_token %}
+                                <input type="hidden" name="status" value="in_transit">
+                                <button type="submit" class="btn btn-warning">发车</button>
+                            </form>
+                            {% elif e.status == 'in_transit' %}
+                            <form method="post" action="{% url 'allocation_execution_status' e.pk %}" class="d-inline" onsubmit="return confirm('确定完成调拨？');">
+                                {% csrf_token %}
+                                <input type="hidden" name="status" value="completed">
                                 <button type="submit" class="btn btn-success">完成</button>
                             </form>
                             {% endif %}
