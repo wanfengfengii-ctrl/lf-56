@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+{% block title %}删除区域 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-trash me-2"></i>删除区域</h3>
+    <a href="{% url 'region_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回列表</a>
+</div>
+
+<div class="card stat-card border-danger">
+    <div class="card-body">
+        <div class="alert alert-warning">
+            <h5><i class="bi bi-exclamation-triangle-fill me-2"></i>确认删除</h5>
+            <p class="mb-0">您确定要删除区域 <strong>"{{ object.code }} - {{ object.name }}"</strong> 吗？此操作不可撤销。</p>
+        </div>
+        <dl class="row">
+            <dt class="col-sm-3">区域编号</dt>
+            <dd class="col-sm-9">{{ object.code }}</dd>
+            <dt class="col-sm-3">区域名称</dt>
+            <dd class="col-sm-9">{{ object.name }}</dd>
+            <dt class="col-sm-3">父区域</dt>
+            <dd class="col-sm-9">{{ object.parent|default:'无（顶级区域）' }}</dd>
+            <dt class="col-sm-3">子区域数</dt>
+            <dd class="col-sm-9">{{ object.children.count }}</dd>
+            <dt class="col-sm-3">关联粮仓数</dt>
+            <dd class="col-sm-9">{{ object.granaries.count }}</dd>
+            <dt class="col-sm-3">描述</dt>
+            <dd class="col-sm-9">{{ object.description|default:'-' }}</dd>
+            <dt class="col-sm-3">创建时间</dt>
+            <dd class="col-sm-9">{{ object.created_at|date:'Y-m-d H:i' }}</dd>
+        </dl>
+        {% if object.children.count or object.granaries.count %}
+        <div class="alert alert-danger">
+            <i class="bi bi-exclamation-circle me-2"></i>
+            <strong>警告：</strong>
+            {% if object.children.count %}该区域下有 {{ object.children.count }} 个子区域。{% endif %}
+            {% if object.granaries.count %}该区域关联了 {{ object.granaries.count }} 个粮仓。{% endif %}
+            删除后关联数据将被解除关联。
+        </div>
+        {% endif %}
+        <form method="post">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger me-2"><i class="bi bi-trash me-1"></i>确认删除</button>
+            <a href="{% url 'region_list' %}" class="btn btn-secondary">取消</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

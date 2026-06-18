@@ -1,0 +1,160 @@
+{% extends 'base.html' %}
+{% block title %}异常损耗 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-exclamation-triangle-fill me-2"></i>异常损耗列表</h3>
+    <a href="#" class="btn btn-primary"><i class="bi bi-plus-circle me-1"></i>登记损耗</a>
+</div>
+
+<div class="card stat-card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small text-muted">状态</label>
+                <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="">全部状态</option>
+                    <option value="reported" {% if selected_status == 'reported' %}selected{% endif %}>已上报</option>
+                    <option value="investigating" {% if selected_status == 'investigating' %}selected{% endif %}>调查中</option>
+                    <option value="confirmed" {% if selected_status == 'confirmed' %}selected{% endif %}>已确认</option>
+                    <option value="resolved" {% if selected_status == 'resolved' %}selected{% endif %}>已解决</option>
+                    <option value="closed" {% if selected_status == 'closed' %}selected{% endif %}>已关闭</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted">损耗类型</label>
+                <select name="loss_type" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="">全部类型</option>
+                    <option value="transport" {% if selected_loss_type == 'transport' %}selected{% endif %}>运输损耗</option>
+                    <option value="storage" {% if selected_loss_type == 'storage' %}selected{% endif %}>储存损耗</option>
+                    <option value="spillage" {% if selected_loss_type == 'spillage' %}selected{% endif %}>洒落损耗</option>
+                    <option value="pest" {% if selected_loss_type == 'pest' %}selected{% endif %}>虫害损耗</option>
+                    <option value="mold" {% if selected_loss_type == 'mold' %}selected{% endif %}>霉变损耗</option>
+                    <option value="other" {% if selected_loss_type == 'other' %}selected{% endif %}>其他损耗</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted">严重程度</label>
+                <select name="severity" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="">全部程度</option>
+                    <option value="low" {% if selected_severity == 'low' %}selected{% endif %}>低</option>
+                    <option value="moderate" {% if selected_severity == 'moderate' %}selected{% endif %}>中</option>
+                    <option value="high" {% if selected_severity == 'high' %}selected{% endif %}>高</option>
+                    <option value="critical" {% if selected_severity == 'critical' %}selected{% endif %}>严重</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <a href="?" class="btn btn-outline-secondary btn-sm w-100"><i class="bi bi-x-circle me-1"></i>重置筛选</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card stat-card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>损耗单号</th>
+                    <th>批次号</th>
+                    <th>损耗类型</th>
+                    <th>损耗数量(吨)</th>
+                    <th>严重程度</th>
+                    <th>状态</th>
+                    <th>登记时间</th>
+                    <th>预估费用</th>
+                    <th>实际费用</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for loss in losses %}
+                <tr>
+                    <td><strong>{{ loss.loss_no }}</strong></td>
+                    <td>{{ loss.batch_no|default:'-' }}</td>
+                    <td>{{ loss.get_loss_type_display|default:loss.loss_type }}</td>
+                    <td><strong class="text-danger">{{ loss.loss_quantity|floatformat:3 }}</strong></td>
+                    <td>
+                        {% if loss.severity == 'low' %}
+                        <span class="badge bg-success">低</span>
+                        {% elif loss.severity == 'moderate' %}
+                        <span class="badge bg-warning text-dark">中</span>
+                        {% elif loss.severity == 'high' %}
+                        <span class="badge bg-orange text-white" style="background-color:#fd7e14;">高</span>
+                        {% elif loss.severity == 'critical' %}
+                        <span class="badge bg-danger">严重</span>
+                        {% else %}
+                        <span class="badge bg-secondary">{{ loss.get_severity_display|default:loss.severity }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if loss.status == 'reported' %}
+                        <span class="badge bg-secondary">已上报</span>
+                        {% elif loss.status == 'investigating' %}
+                        <span class="badge bg-primary">调查中</span>
+                        {% elif loss.status == 'confirmed' %}
+                        <span class="badge bg-warning text-dark">已确认</span>
+                        {% elif loss.status == 'resolved' %}
+                        <span class="badge bg-info text-dark">已解决</span>
+                        {% elif loss.status == 'closed' %}
+                        <span class="badge bg-dark">已关闭</span>
+                        {% else %}
+                        <span class="badge bg-secondary">{{ loss.get_status_display|default:loss.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="small">{{ loss.reported_at|default:loss.created_at|date:'Y-m-d H:i' }}</td>
+                    <td>
+                        {% if loss.estimated_cost %}
+                        ¥{{ loss.estimated_cost|floatformat:2 }}
+                        {% else %}-{% endif %}
+                    </td>
+                    <td>
+                        {% if loss.actual_cost %}
+                        <strong>¥{{ loss.actual_cost|floatformat:2 }}</strong>
+                        {% else %}-{% endif %}
+                    </td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <a href="#" class="btn btn-outline-primary">详情</a>
+                            {% if loss.status == 'reported' %}
+                            <a href="#" class="btn btn-outline-warning">调查</a>
+                            {% elif loss.status == 'investigating' %}
+                            <a href="#" class="btn btn-outline-success">确认</a>
+                            {% elif loss.status == 'confirmed' %}
+                            <a href="#" class="btn btn-outline-info">处理</a>
+                            {% elif loss.status == 'resolved' %}
+                            <a href="#" class="btn btn-outline-dark">关闭</a>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="10" class="text-center text-muted py-4">暂无异常损耗记录</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% if is_paginated %}
+    <div class="card-footer bg-white border-top">
+        <nav>
+            <ul class="pagination pagination-sm mb-0 justify-content-center">
+                {% if page_obj.has_previous %}
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">上一页</a></li>
+                {% endif %}
+                {% for p in page_obj.paginator.page_range %}
+                {% if p == page_obj.number %}
+                <li class="page-item active"><span class="page-link">{{ p }}</span></li>
+                {% else %}
+                <li class="page-item"><a class="page-link" href="?page={{ p }}">{{ p }}</a></li>
+                {% endif %}
+                {% endfor %}
+                {% if page_obj.has_next %}
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">下一页</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

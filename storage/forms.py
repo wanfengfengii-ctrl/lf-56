@@ -7,7 +7,9 @@ from .models import (
     VentilationLog, PestInspection, RiskAssessment,
     Warning, DisposalTask, DisposalProgressLog,
     InventoryChangeLog, AllocationConfig, AllocationSuggestion,
-    AllocationExecution, GrainSituationPrediction
+    AllocationExecution, GrainSituationPrediction,
+    Region, TransportRoute, AllocationBatch, ExecutionNode,
+    AbnormalLoss, ArrivalVerification
 )
 
 
@@ -508,5 +510,319 @@ class AllocationGenerateForm(forms.Form):
         queryset=GrainType.objects.all(),
         required=False,
         empty_label='全部品类',
-        widget=forms.Select(attrs={'class': 'form-select form-select-sm'})
+        widget=forms.Select(attrs={'class': 'form-select form-select-sm'}),
+        label='粮食品类'
     )
+
+
+class RegionForm(forms.ModelForm):
+    class Meta:
+        model = Region
+        fields = ['code', 'name', 'parent', 'description']
+        widgets = {
+            'code': forms.TextInput(attrs={'class': 'form-control'}),
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'parent': forms.Select(attrs={'class': 'form-select'}),
+            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['parent'].queryset = Region.objects.exclude(pk=self.instance.pk) if self.instance.pk else Region.objects.all()
+        self.fields['parent'].required = False
+        self.fields['parent'].empty_label = '无（顶级区域）'
+
+
+class TransportRouteForm(forms.ModelForm):
+    class Meta:
+        model = TransportRoute
+        fields = ['source_granary', 'target_granary', 'transport_type', 'distance_km',
+                  'estimated_hours', 'cost_per_ton', 'is_active', 'remark']
+        widgets = {
+            'source_granary': forms.Select(attrs={'class': 'form-select'}),
+            'target_granary': forms.Select(attrs={'class': 'form-select'}),
+            'transport_type': forms.Select(attrs={'class': 'form-select'}),
+            'distance_km': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1', 'min': '0'}),
+            'estimated_hours': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1', 'min': '0'}),
+            'cost_per_ton': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'remark': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['source_granary'].queryset = Granary.objects.filter(is_active=True)
+        self.fields['target_granary'].queryset = Granary.objects.filter(is_active=True)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        source = cleaned_data.get('source_granary')
+        target = cleaned_data.get('target_granary')
+        if source and target and source.id == target.id:
+            raise ValidationError({'target_granary': '目标粮仓不能与源粮仓相同'})
+        return cleaned_data
+
+
+class AllocationBatchForm(forms.ModelForm):
+    class Meta:
+        model = AllocationBatch
+        fields = ['quantity', 'route', 'estimated_departure', 'estimated_arrival',
+                  'transporter', 'vehicle_no', 'driver', 'driver_phone', 'remark']
+        widgets = {
+            'quantity': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}),
+            'route': forms.Select(attrs={'class': 'form-select'}),
+            'estimated_departure': forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
+            'estimated_arrival': forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
+            'transporter': forms.TextInput(attrs={'class': 'form-control'}),
+            'vehicle_no': forms.TextInput(attrs={'class': 'form-control'}),
+            'driver': forms.TextInput(attrs={'class': 'form-control'}),
+            'driver_phone': forms.TextInput(attrs={'class': 'form-control'}),
+            'remark': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        self.execution = kwargs.pop('execution', None)
+        super().__init__(*args, **kwargs)
+        self.fields['route'].required = False
+        self.fields['route'].queryset = TransportRoute.objects.filter(is_active=True)
+        self.fields['route'].empty_label = '请选择运输路径'
+
+    def clean_quantity(self):
+        qty = self.cleaned_data.get('quantity')
+        if qty is not None and qty <= 0:
+            raise ValidationError('批次数量必须大于0')
+        return qty
+
+
+class BatchSplitForm(forms.Form):
+    quantities = forms.CharField(
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3,
+                                     'placeholder': '请输入各批次数量，用逗号分隔，例如：50,30,20'}),
+        label='拆分数量'
+    )
+    operator = forms.CharField(
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        required=False,
+        label='操作人'
+    )
+
+    def clean_quantities(self):
+        text = self.cleaned_data.get('quantities', '')
+        parts = [p.strip() for p in text.replace('，', ',').split(',') if p.strip()]
+        try:
+            quantities = [float(p) for p in parts]
+        except ValueError:
+            raise ValidationError('请输入有效的数字，用逗号分隔')
+        if len(quantities) < 2:
+            raise ValidationError('至少拆分为2个批次')
+        if any(q <= 0 for q in quantities):
+            raise ValidationError('每个批次数量必须大于0')
+        return quantities
+
+
+class BatchMergeForm(forms.Form):
+    batch_ids = forms.CharField(
+        widget=forms.HiddenInput(),
+        required=False
+    )
+    operator = forms.CharField(
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        required=False,
+        label='操作人'
+    )
+
+
+class ExecutionNodeForm(forms.ModelForm):
+    class Meta:
+        model = ExecutionNode
+        fields = ['node_type', 'node_name', 'node_order', 'location', 'granary',
+                  'planned_time', 'remark']
+        widgets = {
+            'node_type': forms.Select(attrs={'class': 'form-select'}),
+            'node_name': forms.TextInput(attrs={'class': 'form-control'}),
+            'node_order': forms.NumberInput(attrs={'class': 'form-control', 'min': '0'}),
+            'location': forms.TextInput(attrs={'class': 'form-control'}),
+            'granary': forms.Select(attrs={'class': 'form-select'}),
+            'planned_time': forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
+            'remark': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['granary'].required = False
+        self.fields['granary'].queryset = Granary.objects.filter(is_active=True)
+        self.fields['granary'].empty_label = '无'
+        self.fields['location'].required = False
+
+
+class NodeCompleteForm(forms.Form):
+    operator = forms.CharField(
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        required=False,
+        label='操作人'
+    )
+    quantity_checked = forms.FloatField(
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}),
+        required=False,
+        label='核对数量(吨)'
+    )
+    temperature = forms.FloatField(
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1'}),
+        required=False,
+        label='粮温(℃)'
+    )
+    humidity = forms.FloatField(
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1', 'min': '0', 'max': '100'}),
+        required=False,
+        label='湿度(%)'
+    )
+    remark = forms.CharField(
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        required=False,
+        label='备注'
+    )
+
+
+class AbnormalLossForm(forms.ModelForm):
+    class Meta:
+        model = AbnormalLoss
+        fields = ['loss_type', 'severity', 'loss_quantity', 'estimated_cost',
+                  'discovered_location', 'discovered_by', 'description']
+        widgets = {
+            'loss_type': forms.Select(attrs={'class': 'form-select'}),
+            'severity': forms.Select(attrs={'class': 'form-select'}),
+            'loss_quantity': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}),
+            'estimated_cost': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}),
+            'discovered_location': forms.TextInput(attrs={'class': 'form-control'}),
+            'discovered_by': forms.TextInput(attrs={'class': 'form-control'}),
+            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['discovered_location'].required = False
+        self.fields['discovered_by'].required = False
+        self.fields['estimated_cost'].required = False
+
+    def clean_loss_quantity(self):
+        qty = self.cleaned_data.get('loss_quantity')
+        if qty is not None and qty <= 0:
+            raise ValidationError('损耗数量必须大于0')
+        return qty
+
+
+class LossHandleForm(forms.Form):
+    cause_analysis = forms.CharField(
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+        required=False,
+        label='原因分析'
+    )
+    handling_measures = forms.CharField(
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+        required=False,
+        label='处置措施'
+    )
+    handling_result = forms.CharField(
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+        required=False,
+        label='处理结果'
+    )
+    actual_cost = forms.FloatField(
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}),
+        required=False,
+        label='实际损失金额(元)'
+    )
+    handled_by = forms.CharField(
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        required=False,
+        label='处理人'
+    )
+    confirmed_by = forms.CharField(
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        required=False,
+        label='确认人'
+    )
+    remark = forms.CharField(
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        required=False,
+        label='备注'
+    )
+
+
+class ArrivalVerificationForm(forms.ModelForm):
+    class Meta:
+        model = ArrivalVerification
+        fields = ['actual_received', 'quality_check_passed', 'quality_report',
+                  'moisture_content', 'impurity_rate', 'temperature',
+                  'verifier', 'discrepancy_description', 'handling_suggestion', 'remark']
+        widgets = {
+            'actual_received': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}),
+            'quality_check_passed': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'quality_report': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'moisture_content': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1', 'min': '0', 'max': '100'}),
+            'impurity_rate': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1', 'min': '0', 'max': '100'}),
+            'temperature': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1'}),
+            'verifier': forms.TextInput(attrs={'class': 'form-control'}),
+            'discrepancy_description': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'handling_suggestion': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'remark': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['actual_received'].required = False
+        self.fields['quality_report'].required = False
+        self.fields['moisture_content'].required = False
+        self.fields['impurity_rate'].required = False
+        self.fields['temperature'].required = False
+        self.fields['verifier'].required = False
+        self.fields['discrepancy_description'].required = False
+        self.fields['handling_suggestion'].required = False
+        self.fields['remark'].required = False
+
+    def clean_actual_received(self):
+        qty = self.cleaned_data.get('actual_received')
+        if qty is not None and qty < 0:
+            raise ValidationError('实际到仓数量不能为负数')
+        return qty
+
+
+class VerificationConfirmForm(forms.Form):
+    confirmed_by = forms.CharField(
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        label='最终确认人'
+    )
+    handling_suggestion = forms.CharField(
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+        required=False,
+        label='处理建议'
+    )
+
+
+class GranaryRegionForm(forms.ModelForm):
+    class Meta:
+        model = Granary
+        fields = ['code', 'name', 'region', 'capacity', 'current_stock', 'grain_type',
+                  'location', 'latitude', 'longitude', 'ventilation_status', 'is_active']
+        widgets = {
+            'code': forms.TextInput(attrs={'class': 'form-control'}),
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'region': forms.Select(attrs={'class': 'form-select'}),
+            'capacity': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}),
+            'current_stock': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01', 'min': '0'}),
+            'grain_type': forms.Select(attrs={'class': 'form-select'}),
+            'location': forms.TextInput(attrs={'class': 'form-control'}),
+            'latitude': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.000001'}),
+            'longitude': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.000001'}),
+            'ventilation_status': forms.Select(attrs={'class': 'form-select'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['region'].required = False
+        self.fields['region'].queryset = Region.objects.all()
+        self.fields['region'].empty_label = '未指定区域'
+        self.fields['latitude'].required = False
+        self.fields['longitude'].required = False
+        self.fields['location'].required = False

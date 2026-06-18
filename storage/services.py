@@ -1339,3 +1339,628 @@ class PredictionStatisticsService:
 
 
 from django.db import models
+from .models import (
+    Region, TransportRoute, AllocationBatch, ExecutionNode,
+    AbnormalLoss, ArrivalVerification
+)
+
+
+class BatchService:
+    @staticmethod
+    def _generate_batch_no():
+        today = date.today()
+        count = AllocationBatch.objects.filter(
+            created_at__date=today
+        ).count() + 1
+        return f'PC{today.strftime("%Y%m%d")}{count:04d}'
+
+    @classmethod
+    def create_batch(cls, execution, quantity, route=None, operator=None, **kwargs):
+        if quantity <= 0:
+            raise ValueError('批次数量必须大于0')
+        batch = AllocationBatch.objects.create(
+            execution=execution,
+            batch_no=cls._generate_batch_no(),
+            quantity=quantity,
+            route=route,
+            operator=operator,
+            **kwargs
+        )
+        return batch
+
+    @classmethod
+    def create_batches_from_execution(cls, execution, quantities, operator=None):
+        total_qty = execution.suggestion.suggested_quantity
+        sum_qty = sum(quantities)
+        if abs(sum_qty - total_qty) > 0.01:
+            raise ValueError(f'批次数量之和({sum_qty})必须等于调拨计划数量({total_qty})')
+        batches = []
+        route = execution.route
+        for qty in quantities:
+            batch = cls.create_batch(
+                execution=execution,
+                quantity=qty,
+                route=route,
+                operator=operator,
+                transporter=execution.transporter,
+                estimated_departure=execution.estimated_departure,
+                estimated_arrival=execution.estimated_arrival,
+            )
+            batches.append(batch)
+        return batches
+
+    @classmethod
+    def split_batch(cls, batch, split_quantities, operator=None):
+        if batch.status not in ('pending', 'loading'):
+            raise ValueError('只有待执行或装货中的批次才能拆分')
+        sum_qty = sum(split_quantities)
+        if abs(sum_qty - batch.quantity) > 0.01:
+            raise ValueError(f'拆分数量之和({sum_qty})必须等于原批次数量({batch.quantity})')
+        if len(split_quantities) < 2:
+            raise ValueError('至少拆分为2个批次')
+
+        batch.status = 'split'
+        batch.save()
+
+        child_batches = []
+        for i, qty in enumerate(split_quantities):
+            child = AllocationBatch.objects.create(
+                execution=batch.execution,
+                batch_no=f'{batch.batch_no}-{i + 1}',
+                parent_batch=batch,
+                quantity=qty,
+                route=batch.route,
+                operator=operator or batch.operator,
+                transporter=batch.transporter,
+                vehicle_no=batch.vehicle_no,
+                driver=batch.driver,
+                driver_phone=batch.driver_phone,
+                estimated_departure=batch.estimated_departure,
+                estimated_arrival=batch.estimated_arrival,
+            )
+            child_batches.append(child)
+        return child_batches
+
+    @classmethod
+    def merge_batches(cls, batches, operator=None):
+        if len(batches) < 2:
+            raise ValueError('至少合并2个批次')
+        execution_ids = set(b.execution_id for b in batches)
+        if len(execution_ids) > 1:
+            raise ValueError('只能合并同一调拨执行单下的批次')
+        for b in batches:
+            if b.status not in ('pending', 'loading'):
+                raise ValueError(f'批次{b.batch_no}状态为{b.get_status_display()}，不能合并')
+
+        execution = batches[0].execution
+        total_qty = sum(b.quantity for b in batches)
+
+        for b in batches:
+            b.status = 'merged'
+            b.save()
+
+        merged_batch = AllocationBatch.objects.create(
+            execution=execution,
+            batch_no=f'{cls._generate_batch_no()}-M',
+            quantity=total_qty,
+            route=batches[0].route,
+            operator=operator,
+            transporter=batches[0].transporter,
+        )
+        return merged_batch
+
+    @staticmethod
+    def update_batch_status(batch, status, operator=None, **kwargs):
+        batch.status = status
+        now = timezone.now()
+        if status == 'loading' and not batch.actual_departure:
+            pass
+        elif status == 'in_transit' and not batch.actual_departure:
+            batch.actual_departure = now
+        elif status == 'unloading' and not batch.actual_arrival:
+            batch.actual_arrival = now
+        elif status == 'completed':
+            batch.completed_at = now
+            if not batch.actual_arrival:
+                batch.actual_arrival = now
+            if not batch.actual_quantity:
+                batch.actual_quantity = batch.quantity
+        if operator:
+            batch.operator = operator
+        for key, value in kwargs.items():
+            if hasattr(batch, key):
+                setattr(batch, key, value)
+        batch.save()
+        return batch
+
+
+class NodeTrackingService:
+    @staticmethod
+    def create_node(batch, node_type, node_name, node_order=0, **kwargs):
+        node = ExecutionNode.objects.create(
+            batch=batch,
+            node_type=node_type,
+            node_name=node_name,
+            node_order=node_order,
+            **kwargs
+        )
+        return node
+
+    @classmethod
+    def create_default_nodes(cls, batch):
+        nodes = []
+        source = batch.execution.suggestion.source_granary
+        target = batch.execution.suggestion.target_granary
+
+        departure_node = cls.create_node(
+            batch=batch,
+            node_type='departure',
+            node_name=f'{source.code} 出发',
+            node_order=1,
+            granary=source,
+            location=source.location,
+            planned_time=batch.estimated_departure,
+        )
+        nodes.append(departure_node)
+
+        if batch.route and batch.route.transport_type == 'multi':
+            transit_node = cls.create_node(
+                batch=batch,
+                node_type='checkpoint',
+                node_name='中转检查点',
+                node_order=2,
+            )
+            nodes.append(transit_node)
+
+        arrival_node = cls.create_node(
+            batch=batch,
+            node_type='arrival',
+            node_name=f'{target.code} 到达',
+            node_order=10,
+            granary=target,
+            location=target.location,
+            planned_time=batch.estimated_arrival,
+        )
+        nodes.append(arrival_node)
+        return nodes
+
+    @staticmethod
+    def complete_node(node, operator=None, **kwargs):
+        node.is_completed = True
+        node.actual_time = timezone.now()
+        if operator:
+            node.operator = operator
+        for key, value in kwargs.items():
+            if hasattr(node, key):
+                setattr(node, key, value)
+        node.save()
+        return node
+
+    @staticmethod
+    def depart_node(node, operator=None):
+        node.departed_time = timezone.now()
+        if operator:
+            node.operator = operator
+        node.save()
+        return node
+
+    @staticmethod
+    def get_batch_progress(batch):
+        nodes = batch.nodes.all().order_by('node_order')
+        if not nodes:
+            return 0
+        completed = nodes.filter(is_completed=True).count()
+        return round(completed / nodes.count() * 100, 1)
+
+
+class LossService:
+    @staticmethod
+    def report_loss(batch, loss_type, loss_quantity, description,
+                    discovered_by=None, node=None, **kwargs):
+        if loss_quantity <= 0:
+            raise ValueError('损耗数量必须大于0')
+        loss = AbnormalLoss.objects.create(
+            batch=batch,
+            node=node,
+            loss_type=loss_type,
+            loss_quantity=loss_quantity,
+            description=description,
+            discovered_by=discovered_by,
+            **kwargs
+        )
+        return loss
+
+    @staticmethod
+    def investigate_loss(loss, cause_analysis, handled_by=None):
+        loss.status = 'investigating'
+        loss.cause_analysis = cause_analysis
+        if handled_by:
+            loss.handled_by = handled_by
+        loss.save()
+        return loss
+
+    @staticmethod
+    def confirm_loss(loss, actual_cost=None, confirmed_by=None, handling_result=None):
+        loss.status = 'confirmed'
+        if actual_cost is not None:
+            loss.actual_cost = actual_cost
+        if confirmed_by:
+            loss.confirmed_by = confirmed_by
+            loss.confirmed_time = timezone.now()
+        if handling_result:
+            loss.handling_result = handling_result
+        loss.save()
+        return loss
+
+    @staticmethod
+    def resolve_loss(loss, handling_measures, handled_by=None):
+        loss.status = 'resolved'
+        loss.handling_measures = handling_measures
+        loss.handled_time = timezone.now()
+        if handled_by:
+            loss.handled_by = handled_by
+        loss.save()
+        return loss
+
+    @staticmethod
+    def close_loss(loss, remark=None):
+        loss.status = 'closed'
+        if remark:
+            loss.remark = remark
+        loss.save()
+        return loss
+
+    @staticmethod
+    def get_batch_total_loss(batch):
+        losses = batch.abnormal_losses.filter(status__in=['confirmed', 'resolved', 'closed'])
+        return sum(l.loss_quantity for l in losses)
+
+    @staticmethod
+    def get_batch_total_loss_cost(batch):
+        losses = batch.abnormal_losses.filter(status__in=['confirmed', 'resolved', 'closed'])
+        return sum(l.actual_cost or l.estimated_cost for l in losses)
+
+
+class ArrivalVerificationService:
+    @staticmethod
+    def _generate_verification_no():
+        today = date.today()
+        count = ArrivalVerification.objects.filter(
+            created_at__date=today
+        ).count() + 1
+        return f'FH{today.strftime("%Y%m%d")}{count:04d}'
+
+    @classmethod
+    def create_verification(cls, batch, actual_received=None, **kwargs):
+        if hasattr(batch, 'arrival_verification') and batch.arrival_verification:
+            raise ValueError('该批次已存在到仓复核记录')
+        verification = ArrivalVerification.objects.create(
+            batch=batch,
+            verification_no=cls._generate_verification_no(),
+            planned_quantity=batch.quantity,
+            actual_loaded=batch.actual_quantity or batch.quantity,
+            actual_received=actual_received,
+            **kwargs
+        )
+        return verification
+
+    @staticmethod
+    def start_verification(verification, verifier=None):
+        verification.status = 'verifying'
+        if verifier:
+            verification.verifier = verifier
+        verification.save()
+        return verification
+
+    @staticmethod
+    def verify(verification, actual_received, quality_check_passed=True,
+               verifier=None, **kwargs):
+        verification.actual_received = actual_received
+        planned = verification.planned_quantity
+        loaded = verification.actual_loaded or planned
+        verification.quantity_diff = actual_received - loaded
+        verification.quality_check_passed = quality_check_passed
+        verification.verification_time = timezone.now()
+        if verifier:
+            verification.verifier = verifier
+        for key, value in kwargs.items():
+            if hasattr(verification, key):
+                setattr(verification, key, value)
+
+        diff_rate = verification.get_diff_rate()
+        if not quality_check_passed:
+            verification.status = 'failed'
+        elif diff_rate > 2:
+            verification.status = 'discrepancy'
+        else:
+            verification.status = 'passed'
+        verification.save()
+        return verification
+
+    @staticmethod
+    def confirm_verification(verification, confirmed_by, handling_suggestion=None):
+        if handling_suggestion:
+            verification.handling_suggestion = handling_suggestion
+        verification.confirmed_by = confirmed_by
+        verification.confirmed_time = timezone.now()
+        verification.save()
+        return verification
+
+
+class CollaborativeAnalyticsService:
+    @staticmethod
+    def get_timeliness_stats(days=30, start_date=None, end_date=None):
+        end_date = end_date or date.today()
+        start_date = start_date or (end_date - timedelta(days=days - 1))
+
+        batches = AllocationBatch.objects.filter(
+            status='completed',
+            completed_at__date__gte=start_date,
+            completed_at__date__lte=end_date
+        ).select_related('route', 'execution__suggestion__source_granary',
+                          'execution__suggestion__target_granary')
+
+        total = batches.count()
+        on_time_count = 0
+        delayed_count = 0
+        total_estimated_hours = 0
+        total_actual_hours = 0
+        total_delay_hours = 0
+
+        for b in batches:
+            transit = b.get_transit_hours()
+            estimated = b.route.estimated_hours if b.route else 0
+            if transit and estimated > 0:
+                total_estimated_hours += estimated
+                total_actual_hours += transit
+                if transit <= estimated * 1.1:
+                    on_time_count += 1
+                else:
+                    delayed_count += 1
+                    total_delay_hours += (transit - estimated)
+
+        return {
+            'total_completed': total,
+            'on_time_count': on_time_count,
+            'delayed_count': delayed_count,
+            'on_time_rate': round(on_time_count / total * 100, 1) if total > 0 else 0,
+            'avg_estimated_hours': round(total_estimated_hours / total, 2) if total > 0 else 0,
+            'avg_actual_hours': round(total_actual_hours / total, 2) if total > 0 else 0,
+            'avg_delay_hours': round(total_delay_hours / delayed_count, 2) if delayed_count > 0 else 0,
+            'total_delay_hours': round(total_delay_hours, 2),
+        }
+
+    @staticmethod
+    def get_loss_rate_stats(days=30, start_date=None, end_date=None):
+        end_date = end_date or date.today()
+        start_date = start_date or (end_date - timedelta(days=days - 1))
+
+        batches = AllocationBatch.objects.filter(
+            status='completed',
+            completed_at__date__gte=start_date,
+            completed_at__date__lte=end_date
+        )
+
+        total_quantity = 0
+        total_loss = 0
+        batches_with_loss = 0
+        loss_by_type = {}
+
+        for b in batches:
+            actual = b.actual_quantity or b.quantity
+            total_quantity += actual
+            batch_loss = b.loss_quantity or 0
+            total_loss += batch_loss
+            if batch_loss > 0:
+                batches_with_loss += 1
+
+        losses = AbnormalLoss.objects.filter(
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date
+        )
+        for l in losses:
+            t = l.get_loss_type_display()
+            loss_by_type[t] = loss_by_type.get(t, 0) + l.loss_quantity
+
+        return {
+            'total_completed_batches': batches.count(),
+            'total_quantity': round(total_quantity, 2),
+            'total_loss': round(total_loss, 2),
+            'overall_loss_rate': round(total_loss / total_quantity * 100, 3) if total_quantity > 0 else 0,
+            'batches_with_loss': batches_with_loss,
+            'loss_occurrence_rate': round(batches_with_loss / batches.count() * 100, 1) if batches.count() > 0 else 0,
+            'loss_by_type': loss_by_type,
+        }
+
+    @staticmethod
+    def get_execution_rate_stats(days=30, start_date=None, end_date=None):
+        end_date = end_date or date.today()
+        start_date = start_date or (end_date - timedelta(days=days - 1))
+
+        suggestions = AllocationSuggestion.objects.filter(
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date
+        )
+        executions = AllocationExecution.objects.filter(
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date
+        )
+
+        total_suggestions = suggestions.count()
+        approved = suggestions.filter(status__in=['approved', 'executed']).count()
+        rejected = suggestions.filter(status='rejected').count()
+        total_executions = executions.count()
+        completed_executions = executions.filter(status='completed').count()
+        cancelled_executions = executions.filter(status='cancelled').count()
+
+        total_planned_qty = sum(s.suggested_quantity for s in suggestions.filter(status__in=['approved', 'executed']))
+        total_actual_qty = sum(
+            e.actual_quantity or 0 for e in executions.filter(status='completed')
+        )
+
+        return {
+            'total_suggestions': total_suggestions,
+            'approved_suggestions': approved,
+            'rejected_suggestions': rejected,
+            'approval_rate': round(approved / total_suggestions * 100, 1) if total_suggestions > 0 else 0,
+            'total_executions': total_executions,
+            'completed_executions': completed_executions,
+            'cancelled_executions': cancelled_executions,
+            'execution_completion_rate': round(completed_executions / total_executions * 100, 1) if total_executions > 0 else 0,
+            'total_planned_quantity': round(total_planned_qty, 2),
+            'total_actual_quantity': round(total_actual_qty, 2),
+            'quantity_achievement_rate': round(total_actual_qty / total_planned_qty * 100, 1) if total_planned_qty > 0 else 0,
+        }
+
+    @staticmethod
+    def get_collaboration_efficiency(days=30, start_date=None, end_date=None):
+        end_date = end_date or date.today()
+        start_date = start_date or (end_date - timedelta(days=days - 1))
+
+        executions = AllocationExecution.objects.filter(
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date
+        ).select_related('suggestion__source_granary', 'suggestion__target_granary')
+
+        total_executions = executions.count()
+        completed = executions.filter(status='completed')
+        completed_count = completed.count()
+
+        total_cycle_hours = 0
+        verified_count = 0
+        verification_pass_count = 0
+        cross_region_count = 0
+        cross_region_completed = 0
+
+        for e in completed:
+            if e.created_at and e.completed_at:
+                delta = e.completed_at - e.created_at
+                total_cycle_hours += delta.total_seconds() / 3600
+
+            source_region = e.suggestion.source_granary.region_id
+            target_region = e.suggestion.target_granary.region_id
+            if source_region and target_region and source_region != target_region:
+                cross_region_count += 1
+                if e.status == 'completed':
+                    cross_region_completed += 1
+
+            for b in e.batches.filter(status='completed'):
+                if hasattr(b, 'arrival_verification') and b.arrival_verification:
+                    verified_count += 1
+                    if b.arrival_verification.status == 'passed':
+                        verification_pass_count += 1
+
+        batch_total = AllocationBatch.objects.filter(
+            execution__in=executions
+        ).count()
+        batch_completed = AllocationBatch.objects.filter(
+            execution__in=executions,
+            status='completed'
+        ).count()
+
+        return {
+            'total_executions': total_executions,
+            'completed_executions': completed_count,
+            'execution_rate': round(completed_count / total_executions * 100, 1) if total_executions > 0 else 0,
+            'avg_cycle_hours': round(total_cycle_hours / completed_count, 2) if completed_count > 0 else 0,
+            'total_batches': batch_total,
+            'completed_batches': batch_completed,
+            'batch_completion_rate': round(batch_completed / batch_total * 100, 1) if batch_total > 0 else 0,
+            'verified_batches': verified_count,
+            'verification_rate': round(verified_count / batch_completed * 100, 1) if batch_completed > 0 else 0,
+            'verification_pass_count': verification_pass_count,
+            'verification_pass_rate': round(verification_pass_count / verified_count * 100, 1) if verified_count > 0 else 0,
+            'cross_region_executions': cross_region_count,
+            'cross_region_completion_rate': round(
+                cross_region_completed / cross_region_count * 100, 1
+            ) if cross_region_count > 0 else 0,
+        }
+
+    @staticmethod
+    def get_region_collaboration_stats(days=30):
+        end_date = date.today()
+        start_date = end_date - timedelta(days=days - 1)
+
+        executions = AllocationExecution.objects.filter(
+            status='completed',
+            completed_at__date__gte=start_date,
+            completed_at__date__lte=end_date
+        ).select_related('suggestion__source_granary__region',
+                         'suggestion__target_granary__region')
+
+        region_stats = {}
+        for e in executions:
+            src = e.suggestion.source_granary.region
+            tgt = e.suggestion.target_granary.region
+            if not src or not tgt:
+                continue
+            key = f'{src.name}→{tgt.name}'
+            if key not in region_stats:
+                region_stats[key] = {
+                    'source_region': src.name,
+                    'target_region': tgt.name,
+                    'count': 0,
+                    'quantity': 0,
+                    'avg_hours': 0,
+                    'hours': [],
+                }
+            region_stats[key]['count'] += 1
+            region_stats[key]['quantity'] += e.actual_quantity or e.suggestion.suggested_quantity
+            transit = e.get_transit_hours()
+            if transit:
+                region_stats[key]['hours'].append(transit)
+
+        result = []
+        for key, stats in region_stats.items():
+            if stats['hours']:
+                stats['avg_hours'] = round(sum(stats['hours']) / len(stats['hours']), 2)
+            del stats['hours']
+            stats['quantity'] = round(stats['quantity'], 2)
+            result.append(stats)
+        return sorted(result, key=lambda x: -x['count'])
+
+    @staticmethod
+    def get_transport_route_stats(days=30):
+        end_date = date.today()
+        start_date = end_date - timedelta(days=days - 1)
+
+        batches = AllocationBatch.objects.filter(
+            status='completed',
+            completed_at__date__gte=start_date,
+            completed_at__date__lte=end_date,
+            route__isnull=False
+        ).select_related('route')
+
+        route_stats = {}
+        for b in batches:
+            r = b.route
+            key = f'{r.source_granary.code}→{r.target_granary.code}({r.get_transport_type_display()})'
+            if key not in route_stats:
+                route_stats[key] = {
+                    'route': key,
+                    'transport_type': r.get_transport_type_display(),
+                    'count': 0,
+                    'quantity': 0,
+                    'estimated_hours': r.estimated_hours,
+                    'actual_hours': [],
+                }
+            route_stats[key]['count'] += 1
+            route_stats[key]['quantity'] += b.actual_quantity or b.quantity
+            transit = b.get_transit_hours()
+            if transit:
+                route_stats[key]['actual_hours'].append(transit)
+
+        result = []
+        for key, stats in route_stats.items():
+            if stats['actual_hours']:
+                stats['avg_actual_hours'] = round(sum(stats['actual_hours']) / len(stats['actual_hours']), 2)
+                stats['efficiency_rate'] = round(
+                    stats['estimated_hours'] / stats['avg_actual_hours'] * 100, 1
+                ) if stats['avg_actual_hours'] > 0 else 0
+            else:
+                stats['avg_actual_hours'] = 0
+                stats['efficiency_rate'] = 0
+            del stats['actual_hours']
+            stats['quantity'] = round(stats['quantity'], 2)
+            result.append(stats)
+        return sorted(result, key=lambda x: -x['count'])

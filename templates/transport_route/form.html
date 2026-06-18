@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+{% block title %}{% if object %}编辑{% else %}新增{% endif %}运输路径 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-signpost-split me-2"></i>{% if object %}编辑{% else %}新增{% endif %}运输路径</h3>
+    <a href="{% url 'transport_route_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回列表</a>
+</div>
+
+<div class="card stat-card">
+    <div class="card-body">
+        <form method="post" novalidate>
+            {% csrf_token %}
+            {% if form.non_field_errors %}
+                <div class="alert alert-danger">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>
+            {% endif %}
+            <div class="row g-3">
+                <div class="col-md-5">
+                    <label class="form-label">{{ form.source_granary.label }} <span class="text-danger">*</span></label>
+                    {{ form.source_granary }}
+                    {% if form.source_granary.errors %}<div class="text-danger small mt-1">{{ form.source_granary.errors.0 }}</div>{% endif %}
+                </div>
+                <div class="col-md-2 d-flex align-items-center justify-content-center">
+                    <i class="bi bi-arrow-right text-primary" style="font-size:2rem;"></i>
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label">{{ form.target_granary.label }} <span class="text-danger">*</span></label>
+                    {{ form.target_granary }}
+                    {% if form.target_granary.errors %}<div class="text-danger small mt-1">{{ form.target_granary.errors.0 }}</div>{% endif %}
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.transport_type.label }} <span class="text-danger">*</span></label>
+                    {{ form.transport_type }}
+                    {% if form.transport_type.errors %}<div class="text-danger small mt-1">{{ form.transport_type.errors.0 }}</div>{% endif %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.distance_km.label }} <span class="text-danger">*</span></label>
+                    {{ form.distance_km }}
+                    <small class="text-muted d-block">单位：公里</small>
+                    {% if form.distance_km.errors %}<div class="text-danger small mt-1">{{ form.distance_km.errors.0 }}</div>{% endif %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.estimated_hours.label }} <span class="text-danger">*</span></label>
+                    {{ form.estimated_hours }}
+                    <small class="text-muted d-block">单位：小时</small>
+                    {% if form.estimated_hours.errors %}<div class="text-danger small mt-1">{{ form.estimated_hours.errors.0 }}</div>{% endif %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">{{ form.cost_per_ton.label }} <span class="text-danger">*</span></label>
+                    {{ form.cost_per_ton }}
+                    <small class="text-muted d-block">单位：元/吨</small>
+                    {% if form.cost_per_ton.errors %}<div class="text-danger small mt-1">{{ form.cost_per_ton.errors.0 }}</div>{% endif %}
+                </div>
+
+                <div class="col-md-12">
+                    <div class="form-check">
+                        {{ form.is_active }}
+                        <label class="form-check-label" for="id_is_active">{{ form.is_active.label }}</label>
+                    </div>
+                </div>
+
+                <div class="col-md-12">
+                    <label class="form-label">{{ form.remark.label }}</label>
+                    {{ form.remark }}
+                    {% if form.remark.errors %}<div class="text-danger small mt-1">{{ form.remark.errors.0 }}</div>{% endif %}
+                </div>
+            </div>
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary me-2"><i class="bi bi-check-lg me-1"></i>保存</button>
+                <a href="{% url 'transport_route_list' %}" class="btn btn-secondary">取消</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

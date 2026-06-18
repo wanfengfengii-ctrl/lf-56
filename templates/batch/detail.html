@@ -1,0 +1,930 @@
+{% extends 'base.html' %}
+{% block title %}批次详情 - {{ batch.batch_no }} - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3 class="page-title mb-0">
+            <i class="bi bi-box-seam me-2"></i>批次详情
+            <small class="text-muted fs-6 ms-2">{{ batch.batch_no }}</small>
+        </h3>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'batch_list' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left me-1"></i>返回列表
+        </a>
+        <a href="{% url 'allocation_execution_detail' batch.execution.pk %}" class="btn btn-outline-primary">
+            <i class="bi bi-file-text me-1"></i>执行单详情
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card stat-card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><strong>批次基本信息</strong></span>
+                <div>
+                    {% if batch.status == 'pending' %}
+                    <span class="badge bg-secondary">待发运</span>
+                    {% elif batch.status == 'loading' %}
+                    <span class="badge bg-info text-dark">装车中</span>
+                    {% elif batch.status == 'in_transit' %}
+                    <span class="badge bg-primary">运输中</span>
+                    {% elif batch.status == 'unloading' %}
+                    <span class="badge bg-warning text-dark">卸货中</span>
+                    {% elif batch.status == 'completed' %}
+                    <span class="badge bg-success">已完成</span>
+                    {% elif batch.status == 'cancelled' %}
+                    <span class="badge bg-danger">已取消</span>
+                    {% elif batch.status == 'merged' %}
+                    <span class="badge bg-dark">已合并</span>
+                    {% elif batch.status == 'split' %}
+                    <span class="badge bg-dark">已拆分</span>
+                    {% else %}
+                    <span class="badge bg-secondary">{{ batch.get_status_display }}</span>
+                    {% endif %}
+                    {% if batch.parent_batch %}
+                    <span class="badge bg-dark ms-1">子批次</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row mb-4">
+                    <div class="col-md-5 text-center">
+                        <div class="p-4 bg-light rounded-3">
+                            <h6 class="text-muted mb-2">源粮仓</h6>
+                            <h4 class="mb-1">{{ batch.execution.suggestion.source_granary.code }}</h4>
+                            <p class="text-muted small mb-0">{{ batch.execution.suggestion.source_granary.name }}</p>
+                        </div>
+                    </div>
+                    <div class="col-md-2 d-flex align-items-center justify-content-center">
+                        <div class="text-center">
+                            <i class="bi bi-arrow-right-circle-fill text-primary" style="font-size:2.5rem;"></i>
+                            <p class="small text-muted mt-2">
+                                <strong>{{ batch.quantity|floatformat:2 }}</strong>吨
+                                <br>{{ batch.execution.suggestion.grain_type.name }}
+                            </p>
+                        </div>
+                    </div>
+                    <div class="col-md-5 text-center">
+                        <div class="p-4 bg-light rounded-3">
+                            <h6 class="text-muted mb-2">目标粮仓</h6>
+                            <h4 class="mb-1">{{ batch.execution.suggestion.target_granary.code }}</h4>
+                            <p class="text-muted small mb-0">{{ batch.execution.suggestion.target_granary.name }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <dl class="row">
+                    <dt class="col-sm-3">批次号</dt>
+                    <dd class="col-sm-3">{{ batch.batch_no }}</dd>
+                    <dt class="col-sm-3">关联执行单</dt>
+                    <dd class="col-sm-3">
+                        <a href="{% url 'allocation_execution_detail' batch.execution.pk %}" class="text-decoration-none">
+                            {{ batch.execution.execution_no }}
+                        </a>
+                    </dd>
+
+                    <dt class="col-sm-3">计划数量</dt>
+                    <dd class="col-sm-3"><strong class="text-primary">{{ batch.quantity|floatformat:2 }}吨</strong></dd>
+                    <dt class="col-sm-3">实际数量</dt>
+                    <dd class="col-sm-3">
+                        {% if batch.actual_quantity %}
+                        <strong>{{ batch.actual_quantity|floatformat:2 }}吨</strong>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </dd>
+
+                    <dt class="col-sm-3">损耗数量</dt>
+                    <dd class="col-sm-3">
+                        {% if batch.loss_quantity > 0 %}
+                        <strong class="text-danger">{{ batch.loss_quantity|floatformat:2 }}吨</strong>
+                        <small class="text-muted">({{ batch.get_loss_rate }}%)</small>
+                        {% else %}
+                        <span class="text-success">暂无损耗</span>
+                        {% endif %}
+                    </dd>
+                    <dt class="col-sm-3">运输路径</dt>
+                    <dd class="col-sm-3">{{ batch.route|default:'-' }}</dd>
+
+                    <dt class="col-sm-3">运输单位</dt>
+                    <dd class="col-sm-3">{{ batch.transporter|default:'-' }}</dd>
+                    <dt class="col-sm-3">车牌号</dt>
+                    <dd class="col-sm-3">{{ batch.vehicle_no|default:'-' }}</dd>
+
+                    <dt class="col-sm-3">司机</dt>
+                    <dd class="col-sm-3">{{ batch.driver|default:'-' }}</dd>
+                    <dt class="col-sm-3">司机电话</dt>
+                    <dd class="col-sm-3">{{ batch.driver_phone|default:'-' }}</dd>
+
+                    <dt class="col-sm-3">预计出发时间</dt>
+                    <dd class="col-sm-3">{{ batch.estimated_departure|default:'-'|date:'Y-m-d H:i' }}</dd>
+                    <dt class="col-sm-3">实际出发时间</dt>
+                    <dd class="col-sm-3">
+                        {% if batch.actual_departure %}
+                        {{ batch.actual_departure|date:'Y-m-d H:i' }}
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </dd>
+
+                    <dt class="col-sm-3">预计到达时间</dt>
+                    <dd class="col-sm-3">{{ batch.estimated_arrival|default:'-'|date:'Y-m-d H:i' }}</dd>
+                    <dt class="col-sm-3">实际到达时间</dt>
+                    <dd class="col-sm-3">
+                        {% if batch.actual_arrival %}
+                        {{ batch.actual_arrival|date:'Y-m-d H:i' }}
+                        {% if batch.get_transit_hours %}
+                        <small class="text-muted ms-1">(用时 {{ batch.get_transit_hours }}小时)</small>
+                        {% endif %}
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                    </dd>
+
+                    <dt class="col-sm-3">执行人</dt>
+                    <dd class="col-sm-3">{{ batch.operator|default:'-' }}</dd>
+                    <dt class="col-sm-3">完成时间</dt>
+                    <dd class="col-sm-3">{{ batch.completed_at|default:'-'|date:'Y-m-d H:i' }}</dd>
+
+                    {% if batch.remark %}
+                    <dt class="col-sm-3">备注</dt>
+                    <dd class="col-sm-9">{{ batch.remark }}</dd>
+                    {% endif %}
+
+                    <dt class="col-sm-3">创建时间</dt>
+                    <dd class="col-sm-3">{{ batch.created_at|date:'Y-m-d H:i' }}</dd>
+                    <dt class="col-sm-3">更新时间</dt>
+                    <dd class="col-sm-3">{{ batch.updated_at|date:'Y-m-d H:i' }}</dd>
+                </dl>
+            </div>
+        </div>
+
+        <div class="card stat-card mb-4">
+            <div class="card-header">
+                <strong><i class="bi bi-arrow-repeat me-1"></i>状态更新</strong>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{% url 'batch_status' batch.pk %}" class="row g-3 align-items-end">
+                    {% csrf_token %}
+                    <div class="col-md-4">
+                        <label class="form-label">选择状态</label>
+                        <select name="status" class="form-select">
+                            <option value="pending" {% if batch.status == 'pending' %}selected{% endif %}>待发运</option>
+                            <option value="loading" {% if batch.status == 'loading' %}selected{% endif %}>装车中</option>
+                            <option value="in_transit" {% if batch.status == 'in_transit' %}selected{% endif %}>运输中</option>
+                            <option value="unloading" {% if batch.status == 'unloading' %}selected{% endif %}>卸货中</option>
+                            <option value="completed" {% if batch.status == 'completed' %}selected{% endif %}>已完成</option>
+                            <option value="cancelled" {% if batch.status == 'cancelled' %}selected{% endif %}>已取消</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">操作人</label>
+                        <input type="text" name="operator" class="form-control" placeholder="请输入操作人" value="{{ batch.operator|default:'' }}">
+                    </div>
+                    <div class="col-md-4">
+                        <button type="submit" class="btn btn-primary w-100" onclick="return confirm('确定更新批次状态？');">
+                            <i class="bi bi-check-circle me-1"></i>更新状态
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        {% if batch.status not in 'completed,cancelled,merged,split' %}
+        <div class="card stat-card mb-4">
+            <div class="card-header">
+                <strong><i class="bi bi-scissors me-1"></i>批次拆分</strong>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{% url 'batch_split' batch.pk %}" class="row g-3 align-items-end">
+                    {% csrf_token %}
+                    <div class="col-md-6">
+                        <label class="form-label">拆分数量（用逗号分隔）</label>
+                        <textarea name="quantities" class="form-control" rows="2" placeholder="例如：50,30,20 （总和需等于当前数量）"></textarea>
+                        <small class="text-muted">当前批次数量：<strong>{{ batch.quantity|floatformat:2 }}吨</strong></small>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">操作人</label>
+                        <input type="text" name="operator" class="form-control" placeholder="请输入操作人">
+                    </div>
+                    <div class="col-md-3">
+                        <button type="submit" class="btn btn-warning text-dark w-100" onclick="return confirm('确定拆分此批次？拆分后原批次将标记为已拆分。');">
+                            <i class="bi bi-scissors me-1"></i>执行拆分
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card stat-card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong><i class="bi bi-geo-alt me-1"></i>执行节点追踪</strong>
+                <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addNodeModal">
+                    <i class="bi bi-plus-lg me-1"></i>新增节点
+                </button>
+            </div>
+            <div class="card-body">
+                {% if nodes %}
+                <div class="timeline">
+                    {% for node in nodes %}
+                    <div class="timeline-item">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <h6 class="mb-1">
+                                    {% if node.is_completed %}
+                                    <i class="bi bi-check-circle-fill text-success me-1"></i>
+                                    {% else %}
+                                    <i class="bi bi-circle text-secondary me-1"></i>
+                                    {% endif %}
+                                    {% if node.node_type == 'departure' %}
+                                    <span class="badge bg-secondary me-1">出发</span>
+                                    {% elif node.node_type == 'checkpoint' %}
+                                    <span class="badge bg-info text-dark me-1">途经</span>
+                                    {% elif node.node_type == 'transit' %}
+                                    <span class="badge bg-warning text-dark me-1">中转</span>
+                                    {% elif node.node_type == 'arrival' %}
+                                    <span class="badge bg-success me-1">到达</span>
+                                    {% else %}
+                                    <span class="badge bg-dark me-1">自定义</span>
+                                    {% endif %}
+                                    <strong>{{ node.node_name }}</strong>
+                                    <small class="text-muted">（顺序: {{ node.node_order }}）</small>
+                                </h6>
+                                {% if node.location %}
+                                <p class="small text-muted mb-1"><i class="bi bi-geo-alt me-1"></i>{{ node.location }}</p>
+                                {% endif %}
+                            </div>
+                            <div class="d-flex gap-1">
+                                {% if not node.is_completed %}
+                                <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#completeNodeModal" data-node-id="{{ node.pk }}" data-node-name="{{ node.node_name }}">
+                                    <i class="bi bi-check-lg me-1"></i>完成
+                                </button>
+                                <form method="post" action="{% url 'node_depart' node.pk %}" class="d-inline" onsubmit="return confirm('确定从此节点出发？');">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="operator" value="{{ batch.operator|default:'系统' }}">
+                                    <button type="submit" class="btn btn-sm btn-outline-primary">
+                                        <i class="bi bi-send me-1"></i>出发
+                                    </button>
+                                </form>
+                                {% if node.node_type == 'custom' %}
+                                <form method="post" action="{% url 'node_delete' node.pk %}" class="d-inline" onsubmit="return confirm('确定删除此节点？');">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                                {% else %}
+                                {% if node.operator %}
+                                <span class="badge bg-light text-dark">{{ node.operator }}</span>
+                                {% endif %}
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="row small text-muted mb-2">
+                            <div class="col-md-3">
+                                <strong>计划时间：</strong>
+                                {{ node.planned_time|default:'-'|date:'Y-m-d H:i' }}
+                            </div>
+                            <div class="col-md-3">
+                                <strong>实际到达：</strong>
+                                {% if node.actual_time %}
+                                <span class="text-success">{{ node.actual_time|date:'Y-m-d H:i' }}</span>
+                                {% else %}
+                                <span>-</span>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-3">
+                                <strong>离开时间：</strong>
+                                {% if node.departed_time %}
+                                <span class="text-primary">{{ node.departed_time|date:'Y-m-d H:i' }}</span>
+                                {% else %}
+                                <span>-</span>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-3">
+                                <strong>状态：</strong>
+                                {% if node.is_completed %}
+                                <span class="text-success">已完成</span>
+                                {% else %}
+                                <span class="text-secondary">待处理</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% if node.quantity_checked or node.temperature or node.humidity %}
+                        <div class="row small bg-light p-2 rounded">
+                            {% if node.quantity_checked %}
+                            <div class="col-md-4">
+                                <strong>核对数量：</strong>{{ node.quantity_checked|floatformat:2 }}吨
+                            </div>
+                            {% endif %}
+                            {% if node.temperature %}
+                            <div class="col-md-4">
+                                <strong>粮温：</strong>{{ node.temperature|floatformat:1 }}℃
+                            </div>
+                            {% endif %}
+                            {% if node.humidity %}
+                            <div class="col-md-4">
+                                <strong>湿度：</strong>{{ node.humidity|floatformat:1 }}%
+                            </div>
+                            {% endif %}
+                            {% if node.remark %}
+                            <div class="col-12 mt-1">
+                                <strong>备注：</strong>{{ node.remark }}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-geo fs-1 d-block mb-2"></i>
+                    暂无执行节点，请点击"新增节点"添加，或更新批次状态为"运输中"自动创建默认节点
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card stat-card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong><i class="bi bi-exclamation-triangle me-1"></i>异常损耗记录</strong>
+                <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#addLossModal">
+                    <i class="bi bi-plus-lg me-1"></i>登记损耗
+                </button>
+            </div>
+            <div class="card-body">
+                {% if losses %}
+                <div class="table-responsive">
+                    <table class="table table-striped align-middle">
+                        <thead>
+                            <tr>
+                                <th>损耗类型</th>
+                                <th>数量(吨)</th>
+                                <th>严重程度</th>
+                                <th>状态</th>
+                                <th>登记时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for loss in losses %}
+                            <tr>
+                                <td>
+                                    <strong>{{ loss.get_loss_type_display }}</strong>
+                                    {% if loss.node %}
+                                    <br><small class="text-muted">节点: {{ loss.node.node_name }}</small>
+                                    {% endif %}
+                                </td>
+                                <td><strong class="text-danger">{{ loss.loss_quantity|floatformat:2 }}</strong></td>
+                                <td>
+                                    {% if loss.severity == 'minor' %}
+                                    <span class="badge bg-success">轻微</span>
+                                    {% elif loss.severity == 'moderate' %}
+                                    <span class="badge bg-warning text-dark">一般</span>
+                                    {% else %}
+                                    <span class="badge bg-danger">严重</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if loss.status == 'reported' %}
+                                    <span class="badge bg-secondary">已上报</span>
+                                    {% elif loss.status == 'investigating' %}
+                                    <span class="badge bg-info text-dark">调查中</span>
+                                    {% elif loss.status == 'confirmed' %}
+                                    <span class="badge bg-warning text-dark">已确认</span>
+                                    {% elif loss.status == 'resolved' %}
+                                    <span class="badge bg-primary">已处理</span>
+                                    {% elif loss.status == 'closed' %}
+                                    <span class="badge bg-success">已归档</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ loss.created_at|date:'Y-m-d H:i' }}</td>
+                                <td>
+                                    <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#handleLossModal" data-loss-id="{{ loss.pk }}" data-loss-type="{{ loss.get_loss_type_display }}">
+                                        <i class="bi bi-gear me-1"></i>处理
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-shield-check fs-1 d-block mb-2"></i>
+                    暂无异常损耗记录
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card stat-card mb-4">
+            <div class="card-header">
+                <strong><i class="bi bi-clipboard-check me-1"></i>到仓复核信息</strong>
+            </div>
+            <div class="card-body">
+                {% if verification %}
+                <dl class="row">
+                    <dt class="col-sm-3">复核单号</dt>
+                    <dd class="col-sm-3">
+                        <a href="{% url 'verification_detail' verification.pk %}" class="text-decoration-none">
+                            {{ verification.verification_no }}
+                        </a>
+                    </dd>
+                    <dt class="col-sm-3">复核状态</dt>
+                    <dd class="col-sm-3">
+                        {% if verification.status == 'pending' %}
+                        <span class="badge bg-secondary">待复核</span>
+                        {% elif verification.status == 'verifying' %}
+                        <span class="badge bg-info text-dark">复核中</span>
+                        {% elif verification.status == 'passed' %}
+                        <span class="badge bg-success">复核通过</span>
+                        {% elif verification.status == 'discrepancy' %}
+                        <span class="badge bg-warning text-dark">存在差异</span>
+                        {% elif verification.status == 'failed' %}
+                        <span class="badge bg-danger">复核不通过</span>
+                        {% endif %}
+                    </dd>
+
+                    <dt class="col-sm-3">计划数量</dt>
+                    <dd class="col-sm-3">{{ verification.planned_quantity|floatformat:2 }}吨</dd>
+                    <dt class="col-sm-3">实际装车数量</dt>
+                    <dd class="col-sm-3">{{ verification.actual_loaded|default:'-'|floatformat:2 }}吨</dd>
+
+                    <dt class="col-sm-3">实际到仓数量</dt>
+                    <dd class="col-sm-3">
+                        <strong>{{ verification.actual_received|default:'-'|floatformat:2 }}吨</strong>
+                    </dd>
+                    <dt class="col-sm-3">数量差异</dt>
+                    <dd class="col-sm-3">
+                        {% if verification.quantity_diff > 0 %}
+                        <span class="text-danger">+{{ verification.quantity_diff|floatformat:2 }}吨</span>
+                        {% elif verification.quantity_diff < 0 %}
+                        <span class="text-danger">{{ verification.quantity_diff|floatformat:2 }}吨</span>
+                        {% else %}
+                        <span class="text-success">无差异</span>
+                        {% endif %}
+                        {% if verification.get_diff_rate > 0 %}
+                        <small class="text-muted">({{ verification.get_diff_rate }}%)</small>
+                        {% endif %}
+                    </dd>
+
+                    <dt class="col-sm-3">到仓时间</dt>
+                    <dd class="col-sm-3">{{ verification.arrival_time|default:'-'|date:'Y-m-d H:i' }}</dd>
+                    <dt class="col-sm-3">卸货完成时间</dt>
+                    <dd class="col-sm-3">{{ verification.unloading_end|default:'-'|date:'Y-m-d H:i' }}</dd>
+
+                    <dt class="col-sm-3">质检结果</dt>
+                    <dd class="col-sm-3">
+                        {% if verification.quality_check_passed %}
+                        <span class="text-success">合格</span>
+                        {% else %}
+                        <span class="text-danger">不合格</span>
+                        {% endif %}
+                    </dd>
+                    <dt class="col-sm-3">水分含量</dt>
+                    <dd class="col-sm-3">{{ verification.moisture_content|default:'-' }}%</dd>
+
+                    <dt class="col-sm-3">杂质率</dt>
+                    <dd class="col-sm-3">{{ verification.impurity_rate|default:'-' }}%</dd>
+                    <dt class="col-sm-3">粮温</dt>
+                    <dd class="col-sm-3">{{ verification.temperature|default:'-' }}℃</dd>
+
+                    <dt class="col-sm-3">复核人</dt>
+                    <dd class="col-sm-3">{{ verification.verifier|default:'-' }}</dd>
+                    <dt class="col-sm-3">复核时间</dt>
+                    <dd class="col-sm-3">{{ verification.verification_time|default:'-'|date:'Y-m-d H:i' }}</dd>
+
+                    {% if verification.quality_report %}
+                    <dt class="col-sm-3">质检报告</dt>
+                    <dd class="col-sm-9">{{ verification.quality_report }}</dd>
+                    {% endif %}
+
+                    {% if verification.discrepancy_description %}
+                    <dt class="col-sm-3">差异说明</dt>
+                    <dd class="col-sm-9 text-danger">{{ verification.discrepancy_description }}</dd>
+                    {% endif %}
+
+                    {% if verification.handling_suggestion %}
+                    <dt class="col-sm-3">处理建议</dt>
+                    <dd class="col-sm-9">{{ verification.handling_suggestion }}</dd>
+                    {% endif %}
+
+                    {% if verification.remark %}
+                    <dt class="col-sm-3">备注</dt>
+                    <dd class="col-sm-9">{{ verification.remark }}</dd>
+                    {% endif %}
+                </dl>
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-3">
+                    <a href="{% url 'verification_detail' verification.pk %}" class="btn btn-primary">
+                        <i class="bi bi-eye me-1"></i>查看完整复核记录
+                    </a>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="bi bi-clipboard-x fs-1 d-block mb-2 text-muted"></i>
+                    <p class="text-muted mb-3">暂无到仓复核记录</p>
+                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createVerificationModal">
+                        <i class="bi bi-plus-lg me-1"></i>创建复核记录
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card stat-card mb-4">
+            <div class="card-header"><i class="bi bi-info-circle me-2"></i>进度概览</div>
+            <div class="card-body">
+                {% with completed_count=nodes|dictsort:"is_completed"|length %}
+                {% with total_count=nodes|length %}
+                <div class="progress-bar-container mb-2">
+                    <div class="progress-bar-fill bg-success" style="width: {% if total_count > 0 %}{% widthratio completed_count total_count 100 %}{% else %}0{% endif %}%"></div>
+                </div>
+                <div class="d-flex justify-content-between small mb-3">
+                    <span>节点完成进度</span>
+                    <span><strong class="text-success">
+                        {% if total_count > 0 %}{% widthratio completed_count total_count 100 %}{% else %}0{% endif %}%
+                    </strong> ({{ completed_count }}/{{ total_count }})</span>
+                </div>
+                {% endwith %}
+                {% endwith %}
+
+                <div class="row g-2">
+                    <div class="col-6">
+                        <div class="p-3 bg-light rounded text-center">
+                            <div class="fs-4 fw-bold text-primary">{{ batch.quantity|floatformat:0 }}</div>
+                            <div class="small text-muted">计划数量(吨)</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="p-3 bg-light rounded text-center">
+                            <div class="fs-4 fw-bold {% if batch.loss_quantity > 0 %}text-danger{% else %}text-success{% endif %}">
+                                {{ batch.loss_quantity|floatformat:2 }}
+                            </div>
+                            <div class="small text-muted">损耗数量(吨)</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if batch.child_batches.exists %}
+        <div class="card stat-card mb-4">
+            <div class="card-header"><i class="bi bi-diagram-3 me-2"></i>子批次</div>
+            <div class="card-body">
+                <div class="list-group list-group-flush">
+                    {% for child in batch.child_batches.all %}
+                    <a href="{% url 'batch_detail' child.pk %}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="fw-bold">{{ child.batch_no }}</div>
+                            <small class="text-muted">{{ child.quantity|floatformat:2 }}吨</small>
+                        </div>
+                        <div>
+                            {% if child.status == 'pending' %}
+                            <span class="badge bg-secondary">待发运</span>
+                            {% elif child.status == 'loading' %}
+                            <span class="badge bg-info text-dark">装车中</span>
+                            {% elif child.status == 'in_transit' %}
+                            <span class="badge bg-primary">运输中</span>
+                            {% elif child.status == 'unloading' %}
+                            <span class="badge bg-warning text-dark">卸货中</span>
+                            {% elif child.status == 'completed' %}
+                            <span class="badge bg-success">已完成</span>
+                            {% elif child.status == 'cancelled' %}
+                            <span class="badge bg-danger">已取消</span>
+                            {% endif %}
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="modal fade" id="addNodeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="{% url 'node_create' batch.pk %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">新增执行节点</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">节点类型</label>
+                        <select name="node_type" class="form-select" required>
+                            <option value="departure">出发</option>
+                            <option value="checkpoint">途经</option>
+                            <option value="transit">中转</option>
+                            <option value="arrival">到达</option>
+                            <option value="custom">自定义节点</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">节点名称</label>
+                        <input type="text" name="node_name" class="form-control" required placeholder="请输入节点名称">
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">节点顺序</label>
+                            <input type="number" name="node_order" class="form-control" value="0" min="0">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">计划时间</label>
+                            <input type="datetime-local" name="planned_time" class="form-control">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">节点位置</label>
+                        <input type="text" name="location" class="form-control" placeholder="请输入节点位置">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">备注</label>
+                        <textarea name="remark" class="form-control" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-check-circle me-1"></i>添加节点</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="completeNodeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" id="completeNodeForm">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">完成节点 - <span id="completeNodeName"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">操作人</label>
+                        <input type="text" name="operator" class="form-control" placeholder="请输入操作人">
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">核对数量(吨)</label>
+                            <input type="number" name="quantity_checked" class="form-control" step="0.01" min="0">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">粮温(℃)</label>
+                            <input type="number" name="temperature" class="form-control" step="0.1">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">湿度(%)</label>
+                            <input type="number" name="humidity" class="form-control" step="0.1" min="0" max="100">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">备注</label>
+                        <textarea name="remark" class="form-control" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-success"><i class="bi bi-check-lg me-1"></i>确认完成</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="addLossModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form method="post" action="{% url 'loss_create' batch.pk %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">登记异常损耗</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">损耗类型</label>
+                            <select name="loss_type" class="form-select" required>
+                                <option value="spillage">撒漏损耗</option>
+                                <option value="theft">偷盗损失</option>
+                                <option value="moisture">水分损耗</option>
+                                <option value="mold">霉变损耗</option>
+                                <option value="pest">虫害损耗</option>
+                                <option value="damage">破损损耗</option>
+                                <option value="other">其他损耗</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">严重程度</label>
+                            <select name="severity" class="form-select" required>
+                                <option value="minor">轻微</option>
+                                <option value="moderate" selected>一般</option>
+                                <option value="serious">严重</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">损耗数量(吨)</label>
+                            <input type="number" name="loss_quantity" class="form-control" step="0.01" min="0" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">预估损失金额(元)</label>
+                            <input type="number" name="estimated_cost" class="form-control" step="0.01" min="0" value="0">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">发现地点</label>
+                            <input type="text" name="discovered_location" class="form-control">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">发现人</label>
+                            <input type="text" name="discovered_by" class="form-control">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">损耗描述</label>
+                        <textarea name="description" class="form-control" rows="4" required placeholder="请详细描述损耗情况"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-danger"><i class="bi bi-exclamation-triangle me-1"></i>登记损耗</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="handleLossModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form method="post" id="handleLossForm">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">处理损耗 - <span id="handleLossType"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">处理操作</label>
+                        <select name="action" class="form-select" id="lossActionSelect">
+                            <option value="investigate">进入调查</option>
+                            <option value="resolve">完成处置</option>
+                            <option value="confirm">确认损失</option>
+                            <option value="close">归档关闭</option>
+                        </select>
+                    </div>
+                    <div class="mb-3" id="causeAnalysisField">
+                        <label class="form-label">原因分析</label>
+                        <textarea name="cause_analysis" class="form-control" rows="3"></textarea>
+                    </div>
+                    <div class="mb-3" id="handlingMeasuresField" style="display:none;">
+                        <label class="form-label">处置措施</label>
+                        <textarea name="handling_measures" class="form-control" rows="3"></textarea>
+                    </div>
+                    <div class="mb-3" id="handlingResultField" style="display:none;">
+                        <label class="form-label">处理结果</label>
+                        <textarea name="handling_result" class="form-control" rows="3"></textarea>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3" id="actualCostField" style="display:none;">
+                            <label class="form-label">实际损失金额(元)</label>
+                            <input type="number" name="actual_cost" class="form-control" step="0.01" min="0">
+                        </div>
+                        <div class="col-md-6 mb-3" id="handledByField">
+                            <label class="form-label">处理人</label>
+                            <input type="text" name="handled_by" class="form-control">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3" id="confirmedByField" style="display:none;">
+                            <label class="form-label">确认人</label>
+                            <input type="text" name="confirmed_by" class="form-control">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">备注</label>
+                            <textarea name="remark" class="form-control" rows="2"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-check-circle me-1"></i>提交处理</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="createVerificationModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form method="post" action="{% url 'verification_create' batch.pk %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">创建到仓复核记录</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">实际到仓数量(吨)</label>
+                            <input type="number" name="actual_received" class="form-control" step="0.01" min="0" value="{{ batch.quantity }}">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">质检是否合格</label>
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" name="quality_check_passed" id="qualityCheck" checked>
+                                <label class="form-check-label" for="qualityCheck">合格</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">水分含量(%)</label>
+                            <input type="number" name="moisture_content" class="form-control" step="0.1" min="0" max="100">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">杂质率(%)</label>
+                            <input type="number" name="impurity_rate" class="form-control" step="0.1" min="0" max="100">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">粮温(℃)</label>
+                            <input type="number" name="temperature" class="form-control" step="0.1">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">复核人</label>
+                        <input type="text" name="verifier" class="form-control">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">质检报告</label>
+                        <textarea name="quality_report" class="form-control" rows="3"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">差异说明</label>
+                        <textarea name="discrepancy_description" class="form-control" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">处理建议</label>
+                        <textarea name="handling_suggestion" class="form-control" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">备注</label>
+                        <textarea name="remark" class="form-control" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-check-circle me-1"></i>创建复核记录</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('completeNodeModal').addEventListener('show.bs.modal', function(e) {
+    var button = e.relatedTarget;
+    var nodeId = button.getAttribute('data-node-id');
+    var nodeName = button.getAttribute('data-node-name');
+    document.getElementById('completeNodeName').textContent = nodeName;
+    document.getElementById('completeNodeForm').action = '/nodes/' + nodeId + '/complete/';
+});
+
+document.getElementById('handleLossModal').addEventListener('show.bs.modal', function(e) {
+    var button = e.relatedTarget;
+    var lossId = button.getAttribute('data-loss-id');
+    var lossType = button.getAttribute('data-loss-type');
+    document.getElementById('handleLossType').textContent = lossType;
+    document.getElementById('handleLossForm').action = '/losses/' + lossId + '/handle/';
+});
+
+document.getElementById('lossActionSelect').addEventListener('change', function(e) {
+    var action = e.target.value;
+    document.getElementById('causeAnalysisField').style.display = (action === 'investigate') ? 'block' : 'none';
+    document.getElementById('handlingMeasuresField').style.display = (action === 'resolve') ? 'block' : 'none';
+    document.getElementById('handlingResultField').style.display = (action === 'confirm' || action === 'resolve') ? 'block' : 'none';
+    document.getElementById('actualCostField').style.display = (action === 'confirm') ? 'block' : 'none';
+    document.getElementById('confirmedByField').style.display = (action === 'confirm') ? 'block' : 'none';
+    document.getElementById('handledByField').style.display = (action !== 'close') ? 'block' : 'none';
+});
+</script>
+{% endblock %}

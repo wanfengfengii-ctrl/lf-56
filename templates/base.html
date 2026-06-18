@@ -84,8 +84,23 @@
                 <a class="nav-link {% if 'prediction' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'prediction_dashboard' %}">
                     <i class="bi bi-graph-up-arrow"></i>粮情预测
                 </a>
+                <a class="nav-link {% if 'region' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'region_list' %}">
+                    <i class="bi bi-geo-alt-fill"></i>区域管理
+                </a>
+                <a class="nav-link {% if 'transport_route' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'transport_route_list' %}">
+                    <i class="bi bi-signpost-split-fill"></i>运输路径
+                </a>
                 <a class="nav-link {% if 'allocation_suggestion' in request.resolver_match.url_name or 'allocation_execution' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'allocation_suggestion_list' %}">
                     <i class="bi bi-arrow-left-right"></i>库存调拨
+                </a>
+                <a class="nav-link {% if 'batch' in request.resolver_match.url_name or 'node' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'batch_list' %}">
+                    <i class="bi bi-boxes"></i>执行批次
+                </a>
+                <a class="nav-link {% if 'loss' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'loss_list' %}">
+                    <i class="bi bi-exclamation-diamond-fill"></i>异常损耗
+                </a>
+                <a class="nav-link {% if 'verification' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'verification_list' %}">
+                    <i class="bi bi-check2-square"></i>到仓复核
                 </a>
                 <a class="nav-link {% if 'allocation_config' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'allocation_config_list' %}">
                     <i class="bi bi-gear-fill"></i>调拨配置
@@ -95,6 +110,9 @@
                 </a>
                 <a class="nav-link {% if 'allocation_analysis' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'allocation_analysis' %}">
                     <i class="bi bi-pie-chart-fill"></i>决策分析
+                </a>
+                <a class="nav-link {% if 'collaborative' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'collaborative_dashboard' %}">
+                    <i class="bi bi-diagram-3-fill"></i>协同调度分析
                 </a>
             </nav>
         </div>

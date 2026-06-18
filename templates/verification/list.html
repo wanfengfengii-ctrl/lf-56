@@ -1,0 +1,163 @@
+{% extends 'base.html' %}
+{% block title %}到仓复核 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-check2-square me-2"></i>到仓复核列表</h3>
+    <a href="#" class="btn btn-primary"><i class="bi bi-plus-circle me-1"></i>新建复核</a>
+</div>
+
+<div class="card stat-card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small text-muted">状态</label>
+                <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="">全部状态</option>
+                    <option value="pending" {% if selected_status == 'pending' %}selected{% endif %}>待复核</option>
+                    <option value="verifying" {% if selected_status == 'verifying' %}selected{% endif %}>复核中</option>
+                    <option value="passed" {% if selected_status == 'passed' %}selected{% endif %}>复核通过</option>
+                    <option value="discrepancy" {% if selected_status == 'discrepancy' %}selected{% endif %}>存在差异</option>
+                    <option value="failed" {% if selected_status == 'failed' %}selected{% endif %}>复核失败</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted">质量检测</label>
+                <select name="quality_passed" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="">全部</option>
+                    <option value="1" {% if selected_quality == '1' %}selected{% endif %}>通过</option>
+                    <option value="0" {% if selected_quality == '0' %}selected{% endif %}>未通过</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted">复核单号</label>
+                <input type="text" name="keyword" class="form-control form-control-sm" placeholder="输入单号搜索" value="{{ keyword|default:'' }}">
+            </div>
+            <div class="col-md-3">
+                <div class="d-grid gap-2 d-md-flex">
+                    <button type="submit" class="btn btn-primary btn-sm flex-fill"><i class="bi bi-search me-1"></i>搜索</button>
+                    <a href="?" class="btn btn-outline-secondary btn-sm flex-fill"><i class="bi bi-x-circle me-1"></i>重置</a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card stat-card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>复核单号</th>
+                    <th>批次号</th>
+                    <th>来源→目标粮仓</th>
+                    <th>计划数量</th>
+                    <th>实发数量</th>
+                    <th>实收数量</th>
+                    <th>数量差异</th>
+                    <th>质量检测</th>
+                    <th>状态</th>
+                    <th>复核时间</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for v in verifications %}
+                <tr>
+                    <td><strong>{{ v.verification_no }}</strong></td>
+                    <td>{{ v.batch_no|default:'-' }}</td>
+                    <td>
+                        {% if v.source_granary and v.target_granary %}
+                        {{ v.source_granary.code }} → {{ v.target_granary.code }}
+                        {% else %}-{% endif %}
+                    </td>
+                    <td>{{ v.planned_quantity|floatformat:2 }}吨</td>
+                    <td>{{ v.shipped_quantity|default:v.planned_quantity|floatformat:2 }}吨</td>
+                    <td>
+                        {% if v.received_quantity %}
+                        <strong>{{ v.received_quantity|floatformat:2 }}吨</strong>
+                        {% else %}-{% endif %}
+                    </td>
+                    <td>
+                        {% if v.quantity_diff is not None and v.quantity_diff != 0 %}
+                            {% if v.quantity_diff > 0 %}
+                            <span class="text-success">+{{ v.quantity_diff|floatformat:3 }}吨</span>
+                            {% else %}
+                            <span class="text-danger">{{ v.quantity_diff|floatformat:3 }}吨</span>
+                            {% endif %}
+                        {% else %}
+                        <span class="text-muted">无差异</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if v.quality_passed is None %}
+                        <span class="text-muted">未检测</span>
+                        {% elif v.quality_passed %}
+                        <span class="badge bg-success">通过</span>
+                        {% else %}
+                        <span class="badge bg-danger">未通过</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if v.status == 'pending' %}
+                        <span class="badge bg-secondary">待复核</span>
+                        {% elif v.status == 'verifying' %}
+                        <span class="badge bg-primary">复核中</span>
+                        {% elif v.status == 'passed' %}
+                        <span class="badge bg-success">复核通过</span>
+                        {% elif v.status == 'discrepancy' %}
+                        <span class="badge bg-warning text-dark">存在差异</span>
+                        {% elif v.status == 'failed' %}
+                        <span class="badge bg-danger">复核失败</span>
+                        {% else %}
+                        <span class="badge bg-secondary">{{ v.get_status_display|default:v.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="small">
+                        {% if v.verified_at %}
+                        {{ v.verified_at|date:'Y-m-d H:i' }}
+                        {% else %}-{% endif %}
+                    </td>
+                    <td>
+                        <div class="btn-group btn-group-sm">
+                            <a href="#" class="btn btn-outline-primary">详情</a>
+                            {% if v.status == 'pending' %}
+                            <a href="#" class="btn btn-outline-info">开始复核</a>
+                            {% elif v.status == 'verifying' %}
+                            <a href="#" class="btn btn-outline-warning">提交复核</a>
+                            {% elif v.status == 'discrepancy' %}
+                            <a href="#" class="btn btn-outline-success">确认处理</a>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="11" class="text-center text-muted py-4">暂无到仓复核记录</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% if is_paginated %}
+    <div class="card-footer bg-white border-top">
+        <nav>
+            <ul class="pagination pagination-sm mb-0 justify-content-center">
+                {% if page_obj.has_previous %}
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">上一页</a></li>
+                {% endif %}
+                {% for p in page_obj.paginator.page_range %}
+                {% if p == page_obj.number %}
+                <li class="page-item active"><span class="page-link">{{ p }}</span></li>
+                {% else %}
+                <li class="page-item"><a class="page-link" href="?page={{ p }}">{{ p }}</a></li>
+                {% endif %}
+                {% endfor %}
+                {% if page_obj.has_next %}
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">下一页</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

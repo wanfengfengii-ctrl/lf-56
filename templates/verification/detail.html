@@ -1,0 +1,333 @@
+{% extends 'base.html' %}
+{% block title %}到仓复核详情 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-clipboard-check me-2"></i>到仓复核详情</h3>
+    <a href="#" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回列表</a>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card stat-card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><strong>{{ verification.verification_no|default:'复核单号' }}</strong></span>
+                <div>
+                    {% if verification.status == 'pending' %}
+                    <span class="badge bg-secondary">待复核</span>
+                    {% elif verification.status == 'verifying' %}
+                    <span class="badge bg-primary">复核中</span>
+                    {% elif verification.status == 'passed' %}
+                    <span class="badge bg-success">复核通过</span>
+                    {% elif verification.status == 'discrepancy' %}
+                    <span class="badge bg-warning text-dark">存在差异</span>
+                    {% elif verification.status == 'failed' %}
+                    <span class="badge bg-danger">复核失败</span>
+                    {% else %}
+                    <span class="badge bg-secondary">{{ verification.get_status_display|default:verification.status }}</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row mb-4">
+                    <div class="col-md-5 text-center">
+                        <div class="p-4 bg-light rounded-3">
+                            <h6 class="text-muted mb-2">来源粮仓</h6>
+                            <h4 class="mb-1">{{ verification.source_granary.code|default:'-' }}</h4>
+                            <p class="text-muted small mb-0">{{ verification.source_granary.name|default:'' }}</p>
+                        </div>
+                    </div>
+                    <div class="col-md-2 d-flex align-items-center justify-content-center">
+                        <div class="text-center">
+                            <i class="bi bi-arrow-right-circle-fill text-primary" style="font-size:2.5rem;"></i>
+                        </div>
+                    </div>
+                    <div class="col-md-5 text-center">
+                        <div class="p-4 bg-light rounded-3">
+                            <h6 class="text-muted mb-2">目标粮仓</h6>
+                            <h4 class="mb-1">{{ verification.target_granary.code|default:'-' }}</h4>
+                            <p class="text-muted small mb-0">{{ verification.target_granary.name|default:'' }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <dl class="row">
+                    <dt class="col-sm-3">复核单号</dt>
+                    <dd class="col-sm-3">{{ verification.verification_no|default:'-' }}</dd>
+                    <dt class="col-sm-3">批次号</dt>
+                    <dd class="col-sm-3">{{ verification.batch_no|default:'-' }}</dd>
+
+                    <dt class="col-sm-3">关联调拨单</dt>
+                    <dd class="col-sm-3">
+                        {% if verification.execution %}
+                        <a href="#">{{ verification.execution.execution_no }}</a>
+                        {% else %}-{% endif %}
+                    </dd>
+                    <dt class="col-sm-3">粮食品类</dt>
+                    <dd class="col-sm-3">{{ verification.grain_type.name|default:'-' }}</dd>
+                </dl>
+            </div>
+        </div>
+
+        <div class="card stat-card mb-4">
+            <div class="card-header"><i class="bi bi-bar-chart-line-fill me-2"></i>数量核对</div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-3 text-center">
+                        <div class="p-3 bg-light rounded-3">
+                            <p class="small text-muted mb-1">计划数量</p>
+                            <h5 class="mb-0">{{ verification.planned_quantity|default:0|floatformat:2 }} 吨</h5>
+                        </div>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <div class="p-3 bg-light rounded-3">
+                            <p class="small text-muted mb-1">实际装车</p>
+                            <h5 class="mb-0">{{ verification.shipped_quantity|default:verification.planned_quantity|default:0|floatformat:2 }} 吨</h5>
+                        </div>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <div class="p-3 bg-light rounded-3">
+                            <p class="small text-muted mb-1">实际到货</p>
+                            <h5 class="mb-0">
+                                {% if verification.received_quantity %}
+                                <strong>{{ verification.received_quantity|floatformat:2 }}</strong>
+                                {% else %}-{% endif %} 吨
+                            </h5>
+                        </div>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <div class="p-3 rounded-3 {% if verification.quantity_diff and verification.quantity_diff != 0 %}bg-danger bg-opacity-10{% else %}bg-success bg-opacity-10{% endif %}">
+                            <p class="small text-muted mb-1">数量差异</p>
+                            <h5 class="mb-0 {% if verification.quantity_diff and verification.quantity_diff > 0 %}text-success{% elif verification.quantity_diff and verification.quantity_diff < 0 %}text-danger{% endif %}">
+                                {% if verification.quantity_diff is not None %}
+                                    {% if verification.quantity_diff > 0 %}+{% endif %}{{ verification.quantity_diff|floatformat:3 }}
+                                {% else %}-{% endif %} 吨
+                            </h5>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card stat-card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-moisture me-2"></i>质量检测</span>
+                <span>
+                    {% if verification.quality_passed is None %}
+                    <span class="badge bg-secondary">未检测</span>
+                    {% elif verification.quality_passed %}
+                    <span class="badge bg-success">检测通过</span>
+                    {% else %}
+                    <span class="badge bg-danger">检测未通过</span>
+                    {% endif %}
+                </span>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 text-center">
+                        <div class="p-3 bg-light rounded-3 mb-3">
+                            <p class="small text-muted mb-1">水分含量</p>
+                            <h5 class="mb-0">
+                                {% if verification.moisture_content is not None %}
+                                {{ verification.moisture_content|floatformat:1 }}%
+                                {% else %}-{% endif %}
+                            </h5>
+                        </div>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <div class="p-3 bg-light rounded-3 mb-3">
+                            <p class="small text-muted mb-1">杂质率</p>
+                            <h5 class="mb-0">
+                                {% if verification.impurity_rate is not None %}
+                                {{ verification.impurity_rate|floatformat:2 }}%
+                                {% else %}-{% endif %}
+                            </h5>
+                        </div>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <div class="p-3 bg-light rounded-3 mb-3">
+                            <p class="small text-muted mb-1">粮温</p>
+                            <h5 class="mb-0">
+                                {% if verification.grain_temperature is not None %}
+                                {{ verification.grain_temperature|floatformat:1 }}°C
+                                {% else %}-{% endif %}
+                            </h5>
+                        </div>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <div class="p-3 bg-light rounded-3 mb-3">
+                            <p class="small text-muted mb-1">质量报告</p>
+                            <h5 class="mb-0">
+                                {% if verification.quality_report %}
+                                <a href="#"><i class="bi bi-file-earmark-text"></i> 查看</a>
+                                {% else %}-{% endif %}
+                            </h5>
+                        </div>
+                    </div>
+                </div>
+                {% if verification.quality_remark %}
+                <div class="mt-3 p-3 bg-light rounded-3">
+                    <p class="small text-muted mb-1">质量备注</p>
+                    <p class="mb-0">{{ verification.quality_remark }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card stat-card mb-4">
+            <div class="card-header"><i class="bi bi-exclamation-circle-fill me-2"></i>差异说明和处理建议</div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label small text-muted">差异说明</label>
+                        <div class="p-3 bg-light rounded-3">
+                            <p class="mb-0">{{ verification.discrepancy_description|default:'暂无差异说明' }}</p>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label small text-muted">处理建议</label>
+                        <div class="p-3 bg-light rounded-3">
+                            <p class="mb-0">{{ verification.handling_suggestion|default:'暂无处理建议' }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if verification.status == 'pending' or verification.status == 'verifying' %}
+        <div class="card stat-card mb-4 border-primary">
+            <div class="card-header bg-primary bg-opacity-10"><i class="bi bi-pencil-square me-2"></i>复核提交表单</div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">实际到货数量（吨）</label>
+                            <input type="number" step="0.001" name="received_quantity" class="form-control"
+                                   value="{{ verification.received_quantity|default:'' }}" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">水分含量（%）</label>
+                            <input type="number" step="0.1" name="moisture_content" class="form-control"
+                                   value="{{ verification.moisture_content|default:'' }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">杂质率（%）</label>
+                            <input type="number" step="0.01" name="impurity_rate" class="form-control"
+                                   value="{{ verification.impurity_rate|default:'' }}">
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">粮温（°C）</label>
+                            <input type="number" step="0.1" name="grain_temperature" class="form-control"
+                                   value="{{ verification.grain_temperature|default:'' }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">质量检测是否通过</label>
+                            <select name="quality_passed" class="form-select">
+                                <option value="">请选择</option>
+                                <option value="1" {% if verification.quality_passed == True %}selected{% endif %}>通过</option>
+                                <option value="0" {% if verification.quality_passed == False %}selected{% endif %}>未通过</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">质量报告</label>
+                            <input type="file" name="quality_report" class="form-control form-control-sm">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">质量备注</label>
+                        <textarea name="quality_remark" class="form-control" rows="2"
+                                  placeholder="请输入质量检测相关备注">{{ verification.quality_remark|default:'' }}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">差异描述</label>
+                        <textarea name="discrepancy_description" class="form-control" rows="3"
+                                  placeholder="如有数量或质量差异，请详细描述">{{ verification.discrepancy_description|default:'' }}</textarea>
+                    </div>
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <button type="submit" name="action" value="save" class="btn btn-outline-secondary me-2">
+                            <i class="bi bi-save me-1"></i>保存草稿
+                        </button>
+                        <button type="submit" name="action" value="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle me-1"></i>提交复核
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if verification.status == 'discrepancy' %}
+        <div class="card stat-card mb-4 border-warning">
+            <div class="card-header bg-warning bg-opacity-10"><i class="bi bi-clipboard-check me-2"></i>确认处理表单</div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">确认人</label>
+                        <input type="text" name="confirmed_by" class="form-control"
+                               value="{{ verification.confirmed_by|default:'' }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">处理建议</label>
+                        <textarea name="handling_suggestion" class="form-control" rows="4"
+                                  placeholder="请输入针对此差异的处理建议" required>{{ verification.handling_suggestion|default:'' }}</textarea>
+                    </div>
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <button type="submit" name="action" value="confirm_pass" class="btn btn-success me-2">
+                            <i class="bi bi-check-circle me-1"></i>确认通过
+                        </button>
+                        <button type="submit" name="action" value="confirm_fail" class="btn btn-danger">
+                            <i class="bi bi-x-circle me-1"></i>确认失败
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card stat-card mb-4">
+            <div class="card-header"><i class="bi bi-clock-history me-2"></i>审核流程信息</div>
+            <div class="card-body">
+                <div class="timeline-item">
+                    <h6 class="mb-1">创建</h6>
+                    <p class="small text-muted mb-1">创建人：{{ verification.created_by|default:'-' }}</p>
+                    <p class="small text-muted mb-0">创建时间：{{ verification.created_at|default:'-'|date:'Y-m-d H:i' }}</p>
+                </div>
+                <div class="timeline-item">
+                    <h6 class="mb-1">复核</h6>
+                    <p class="small text-muted mb-1">复核人：{{ verification.verified_by|default:'-' }}</p>
+                    <p class="small text-muted mb-0">复核时间：{{ verification.verified_at|default:'-'|date:'Y-m-d H:i' }}</p>
+                    {% if verification.verified_by %}
+                    <span class="badge bg-success mt-2">已复核</span>
+                    {% else %}
+                    <span class="badge bg-secondary mt-2">待复核</span>
+                    {% endif %}
+                </div>
+                <div class="timeline-item">
+                    <h6 class="mb-1">确认</h6>
+                    <p class="small text-muted mb-1">确认人：{{ verification.confirmed_by|default:'-' }}</p>
+                    <p class="small text-muted mb-0">确认时间：{{ verification.confirmed_at|default:'-'|date:'Y-m-d H:i' }}</p>
+                    {% if verification.confirmed_by %}
+                    <span class="badge bg-success mt-2">已确认</span>
+                    {% else %}
+                    <span class="badge bg-secondary mt-2">待确认</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        {% if verification.remark %}
+        <div class="card stat-card">
+            <div class="card-header"><i class="bi bi-chat-square-text me-2"></i>备注信息</div>
+            <div class="card-body">
+                <p class="mb-0">{{ verification.remark }}</p>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,114 @@
+{% extends 'base.html' %}
+{% block title %}运输路径管理 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-signpost-split me-2"></i>运输路径管理</h3>
+    <a href="{% url 'transport_route_create' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>新增路径</a>
+</div>
+
+<div class="card stat-card mb-3 p-3">
+    <form method="get" class="row g-2 align-items-center">
+        <div class="col-md-4">
+            <label class="form-label small mb-0">源粮仓</label>
+            <select name="source" class="form-select">
+                <option value="">全部源粮仓</option>
+                {% for g in granaries %}
+                <option value="{{ g.pk }}" {% if source_id == g.pk|stringformat:"s" %}selected{% endif %}>{{ g.code }} - {{ g.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label small mb-0">目标粮仓</label>
+            <select name="target" class="form-select">
+                <option value="">全部目标粮仓</option>
+                {% for g in granaries %}
+                <option value="{{ g.pk }}" {% if target_id == g.pk|stringformat:"s" %}selected{% endif %}>{{ g.code }} - {{ g.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label small mb-0">&nbsp;</label>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-primary flex-grow-1"><i class="bi bi-filter me-1"></i>筛选</button>
+                {% if source_id or target_id %}
+                <a href="{% url 'transport_route_list' %}" class="btn btn-outline-secondary">清除</a>
+                {% endif %}
+            </div>
+        </div>
+    </form>
+</div>
+
+<div class="card stat-card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>源粮仓</th>
+                    <th></th>
+                    <th>目标粮仓</th>
+                    <th>运输方式</th>
+                    <th>距离(km)</th>
+                    <th>预计时长(小时)</th>
+                    <th>单价(元/吨)</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for r in routes %}
+                <tr>
+                    <td>
+                        <div class="fw-semibold">{{ r.source_granary.code }}</div>
+                        <small class="text-muted">{{ r.source_granary.name }}</small>
+                    </td>
+                    <td class="text-center"><i class="bi bi-arrow-right text-primary"></i></td>
+                    <td>
+                        <div class="fw-semibold">{{ r.target_granary.code }}</div>
+                        <small class="text-muted">{{ r.target_granary.name }}</small>
+                    </td>
+                    <td>
+                        {% if r.transport_type == 'road' %}
+                        <span class="badge bg-primary"><i class="bi bi-truck me-1"></i>公路运输</span>
+                        {% elif r.transport_type == 'rail' %}
+                        <span class="badge bg-success"><i class="bi bi-train-front me-1"></i>铁路运输</span>
+                        {% elif r.transport_type == 'water' %}
+                        <span class="badge bg-info"><i class="bi bi-ship me-1"></i>水路运输</span>
+                        {% else %}
+                        <span class="badge bg-secondary"><i class="bi bi-diagram-3 me-1"></i>多式联运</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ r.distance_km }}</td>
+                    <td>{{ r.estimated_hours }}</td>
+                    <td class="fw-semibold">¥{{ r.cost_per_ton }}</td>
+                    <td>
+                        {% if r.is_active %}
+                        <span class="badge bg-success">启用</span>
+                        {% else %}
+                        <span class="badge bg-secondary">停用</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{% url 'transport_route_update' r.pk %}" class="btn btn-sm btn-outline-primary me-1" title="编辑"><i class="bi bi-pencil"></i></a>
+                        <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#delModal{{ r.pk }}" title="删除"><i class="bi bi-trash"></i></button>
+                        <div class="modal fade" id="delModal{{ r.pk }}" tabindex="-1">
+                            <div class="modal-dialog"><div class="modal-content">
+                                <div class="modal-header"><h5 class="modal-title">确认删除</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+                                <div class="modal-body">确定要删除运输路径「{{ r.source_granary.code }} → {{ r.target_granary.code }}（{{ r.get_transport_type_display }}）」吗？</div>
+                                <div class="modal-footer">
+                                    <button class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                                    <form method="post" action="{% url 'transport_route_delete' r.pk %}">{% csrf_token %}<button class="btn btn-danger">确认删除</button></form>
+                                </div>
+                            </div></div>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="9" class="text-center text-muted py-5">暂无运输路径数据，点击右上角新增</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

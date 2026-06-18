@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+{% block title %}删除运输路径 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-trash me-2"></i>删除运输路径</h3>
+    <a href="{% url 'transport_route_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回列表</a>
+</div>
+
+<div class="card stat-card border-danger">
+    <div class="card-body">
+        <div class="alert alert-warning">
+            <h5><i class="bi bi-exclamation-triangle-fill me-2"></i>确认删除</h5>
+            <p class="mb-0">您确定要删除该运输路径吗？此操作不可撤销。</p>
+        </div>
+        <div class="row g-3 mb-4">
+            <div class="col-md-5 text-center">
+                <div class="p-4 bg-light rounded-3">
+                    <h6 class="text-muted mb-2">源粮仓</h6>
+                    <h4 class="mb-1">{{ object.source_granary.code }}</h4>
+                    <p class="text-muted small mb-0">{{ object.source_granary.name }}</p>
+                </div>
+            </div>
+            <div class="col-md-2 d-flex align-items-center justify-content-center">
+                <div class="text-center">
+                    <i class="bi bi-arrow-right-circle-fill text-primary" style="font-size:2.5rem;"></i>
+                    <p class="small text-muted mt-2">{{ object.get_transport_type_display }}</p>
+                </div>
+            </div>
+            <div class="col-md-5 text-center">
+                <div class="p-4 bg-light rounded-3">
+                    <h6 class="text-muted mb-2">目标粮仓</h6>
+                    <h4 class="mb-1">{{ object.target_granary.code }}</h4>
+                    <p class="text-muted small mb-0">{{ object.target_granary.name }}</p>
+                </div>
+            </div>
+        </div>
+        <dl class="row">
+            <dt class="col-sm-3">运输方式</dt>
+            <dd class="col-sm-9">{{ object.get_transport_type_display }}</dd>
+            <dt class="col-sm-3">运输距离</dt>
+            <dd class="col-sm-9">{{ object.distance_km }} 公里</dd>
+            <dt class="col-sm-3">预计时长</dt>
+            <dd class="col-sm-9">{{ object.estimated_hours }} 小时</dd>
+            <dt class="col-sm-3">单位运费</dt>
+            <dd class="col-sm-9">¥{{ object.cost_per_ton }} / 吨</dd>
+            <dt class="col-sm-3">状态</dt>
+            <dd class="col-sm-9">{% if object.is_active %}<span class="badge bg-success">启用</span>{% else %}<span class="badge bg-secondary">停用</span>{% endif %}</dd>
+            <dt class="col-sm-3">备注</dt>
+            <dd class="col-sm-9">{{ object.remark|default:'-' }}</dd>
+            <dt class="col-sm-3">创建时间</dt>
+            <dd class="col-sm-9">{{ object.created_at|date:'Y-m-d H:i' }}</dd>
+            <dt class="col-sm-3">更新时间</dt>
+            <dd class="col-sm-9">{{ object.updated_at|date:'Y-m-d H:i' }}</dd>
+        </dl>
+        <form method="post">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger me-2"><i class="bi bi-trash me-1"></i>确认删除</button>
+            <a href="{% url 'transport_route_list' %}" class="btn btn-secondary">取消</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

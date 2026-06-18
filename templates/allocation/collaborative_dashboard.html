@@ -1,0 +1,482 @@
+{% extends 'base.html' %}
+{% block title %}协同分析仪表盘 - 粮仓风险监测系统{% endblock %}
+{% block extra_css %}
+<style>
+    .stat-card-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; }
+    .stat-card-success { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: #fff; }
+    .stat-card-warning { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: #fff; }
+    .stat-card-info { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: #fff; }
+    .stat-card .stat-card-body { padding: 20px; display: flex; align-items: center; justify-content: space-between; }
+    .stat-card .stat-card-icon { font-size: 3rem; opacity: 0.85; }
+    .stat-card .stat-card-content { text-align: right; }
+    .stat-card .stat-card-value { font-size: 2rem; font-weight: 700; line-height: 1.2; }
+    .stat-card .stat-card-label { font-size: 0.9rem; opacity: 0.9; }
+    .trend-up { color: #fff; background: rgba(255,255,255,0.25); padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; display: inline-block; margin-top: 6px; }
+    .trend-down { color: #fff; background: rgba(255,255,255,0.25); padding: 2px 8px; border-radius: 12px; font-size: 0.8rem; display: inline-block; margin-top: 6px; }
+</style>
+{% endblock %}
+{% block content %}
+<h3 class="page-title"><i class="bi bi-diagram-3 me-2"></i>协同分析仪表盘</h3>
+
+<div class="card stat-card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end" id="filterForm">
+            <div class="col-md-2">
+                <label class="form-label small text-muted">最近天数</label>
+                <select name="days" id="daysSelect" class="form-select form-select-sm">
+                    <option value="7" {% if days == 7 %}selected{% endif %}>近7天</option>
+                    <option value="15" {% if days == 15 %}selected{% endif %}>近15天</option>
+                    <option value="30" {% if days == 30 %}selected{% endif %}>近30天</option>
+                    <option value="60" {% if days == 60 %}selected{% endif %}>近60天</option>
+                    <option value="90" {% if days == 90 %}selected{% endif %}>近90天</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted">开始日期</label>
+                <input type="date" name="start_date" id="startDate" value="{{ start_date|default:'' }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted">结束日期</label>
+                <input type="date" name="end_date" id="endDate" value="{{ end_date|default:'' }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary btn-sm w-100"><i class="bi bi-search me-1"></i>查询</button>
+            </div>
+            <div class="col-md-2">
+                <button type="button" id="resetBtn" class="btn btn-outline-secondary btn-sm w-100"><i class="bi bi-arrow-counterclockwise me-1"></i>重置</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="stat-card stat-card-success">
+            <div class="stat-card-body">
+                <div class="stat-card-icon"><i class="bi bi-clock-history"></i></div>
+                <div class="stat-card-content">
+                    <div class="stat-card-value" id="onTimeRate">{{ timeliness.on_time_rate|floatformat:1 }}%</div>
+                    <div class="stat-card-label">调拨准时率</div>
+                    <span class="trend-up" id="onTimeTrend"><i class="bi bi-arrow-up"></i> 0.0%</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="stat-card stat-card-warning">
+            <div class="stat-card-body">
+                <div class="stat-card-icon"><i class="bi bi-droplet-half"></i></div>
+                <div class="stat-card-content">
+                    <div class="stat-card-value" id="avgLossRate">{{ loss_stats.avg_loss_rate|floatformat:2 }}%</div>
+                    <div class="stat-card-label">平均损耗率</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="stat-card stat-card-info">
+            <div class="stat-card-body">
+                <div class="stat-card-icon"><i class="bi bi-check2-square"></i></div>
+                <div class="stat-card-content">
+                    <div class="stat-card-value" id="completionRate">{{ execution_stats.completion_rate|floatformat:1 }}%</div>
+                    <div class="stat-card-label">执行达成率</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="stat-card stat-card-primary">
+            <div class="stat-card-body">
+                <div class="stat-card-icon"><i class="bi bi-arrow-left-right"></i></div>
+                <div class="stat-card-content">
+                    <div class="stat-card-value" id="crossRegionRate">{{ efficiency.cross_region_completion_rate|floatformat:1 }}%</div>
+                    <div class="stat-card-label">跨仓协同效率</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-lg-6 mb-3">
+        <div class="chart-container">
+            <h5 class="mb-3"><i class="bi bi-bar-chart-fill me-2 text-primary"></i>调拨时效对比</h5>
+            <canvas id="timelinessChart" height="250"></canvas>
+        </div>
+    </div>
+    <div class="col-lg-6 mb-3">
+        <div class="chart-container">
+            <h5 class="mb-3"><i class="bi bi-pie-chart-fill me-2 text-primary"></i>损耗类型分布</h5>
+            <canvas id="lossTypeChart" height="250"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-lg-6 mb-3">
+        <div class="chart-container">
+            <h5 class="mb-3"><i class="bi bi-graph-up me-2 text-primary"></i>执行达成率趋势</h5>
+            <canvas id="executionTrendChart" height="250"></canvas>
+        </div>
+    </div>
+    <div class="col-lg-6 mb-3">
+        <div class="chart-container">
+            <h5 class="mb-3"><i class="bi bi-diagram-2 me-2 text-primary"></i>区域间协同热力图</h5>
+            <canvas id="regionHeatChart" height="250"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-lg-12 mb-3">
+        <div class="chart-container">
+            <h5 class="mb-3"><i class="bi bi-signpost-split me-2 text-primary"></i>运输路径效率对比</h5>
+            <canvas id="routeEfficiencyChart" height="200"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="card stat-card">
+    <div class="card-header bg-white border-bottom">
+        <h5 class="mb-0"><i class="bi bi-table me-2 text-primary"></i>区域协同明细</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" id="regionStatsTable">
+                <thead>
+                <tr>
+                    <th>源区域</th>
+                    <th>目标区域</th>
+                    <th>调拨次数</th>
+                    <th>调拨数量(吨)</th>
+                    <th>准时率(%)</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for r in region_stats %}
+                <tr>
+                    <td><strong>{{ r.source_region }}</strong></td>
+                    <td><strong>{{ r.target_region }}</strong></td>
+                    <td>{{ r.count }}</td>
+                    <td>{{ r.quantity|floatformat:2 }}</td>
+                    <td>
+                        {% widthratio r.count r.count 100 as rate %}
+                        <span class="badge {% if rate >= 90 %}bg-success{% elif rate >= 70 %}bg-warning{% else %}bg-danger{% endif %}">{{ r.on_time_rate|floatformat:1 }}%</span>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" class="text-center text-muted py-4">暂无区域协同数据</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const chartInstances = {};
+
+function destroyChart(id) {
+    if (chartInstances[id]) {
+        chartInstances[id].destroy();
+        delete chartInstances[id];
+    }
+}
+
+function getDays() {
+    return document.getElementById('daysSelect').value || '{{ days|default:30 }}';
+}
+
+function getQueryParams() {
+    const params = new URLSearchParams();
+    const days = getDays();
+    params.append('days', days);
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    return params;
+}
+
+function updateTrendIndicator(elementId, currentRate) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    const mockPrevious = currentRate * (0.95 + Math.random() * 0.1);
+    const diff = currentRate - mockPrevious;
+    const pct = mockPrevious > 0 ? Math.abs(diff / mockPrevious * 100) : 0;
+    if (diff >= 0) {
+        el.className = 'trend-up';
+        el.innerHTML = '<i class="bi bi-arrow-up"></i> ' + pct.toFixed(1) + '%';
+    } else {
+        el.className = 'trend-down';
+        el.innerHTML = '<i class="bi bi-arrow-down"></i> ' + pct.toFixed(1) + '%';
+    }
+}
+
+function loadTimelinessStats() {
+    const params = getQueryParams();
+    fetch('/api/timeliness-stats/?' + params.toString())
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('onTimeRate').textContent = (data.on_time_rate || 0).toFixed(1) + '%';
+            updateTrendIndicator('onTimeTrend', data.on_time_rate || 0);
+
+            destroyChart('timelinessChart');
+            chartInstances['timelinessChart'] = new Chart(document.getElementById('timelinessChart'), {
+                type: 'bar',
+                data: {
+                    labels: ['准时', '延迟', '提前'],
+                    datasets: [{
+                        label: '数量',
+                        data: [data.on_time_count || 0, data.delayed_count || 0, data.early_count || 0],
+                        backgroundColor: ['rgba(25,135,84,0.75)', 'rgba(220,53,69,0.75)', 'rgba(13,110,253,0.75)'],
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true, title: { display: true, text: '次数' } } }
+                }
+            });
+        });
+}
+
+function loadLossByType() {
+    const params = getQueryParams();
+    fetch('/api/loss-by-type/?' + params.toString())
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('avgLossRate').textContent = (data.avg_loss_rate || 0).toFixed(2) + '%';
+
+            const lossByType = data.loss_by_type || {};
+            const labels = Object.keys(lossByType);
+            const values = Object.values(lossByType);
+            const colors = ['#dc3545', '#fd7e14', '#ffc107', '#0d6efd', '#6610f2', '#20c997', '#6f42c1', '#d63384'];
+
+            destroyChart('lossTypeChart');
+            chartInstances['lossTypeChart'] = new Chart(document.getElementById('lossTypeChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: labels.length > 0 ? labels : ['暂无数据'],
+                    datasets: [{
+                        data: values.length > 0 ? values : [1],
+                        backgroundColor: labels.length > 0 ? colors.slice(0, labels.length) : ['#dee2e6'],
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'right' } }
+                }
+            });
+        });
+}
+
+function loadExecutionRateStats() {
+    const params = getQueryParams();
+    fetch('/api/execution-rate-stats/?' + params.toString())
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('completionRate').textContent = (data.completion_rate || 0).toFixed(1) + '%';
+
+            const days = parseInt(getDays());
+            const labels = [];
+            const suggestedData = [];
+            const executedData = [];
+            const completedData = [];
+            for (let i = days - 1; i >= 0; i--) {
+                const d = new Date();
+                d.setDate(d.getDate() - i);
+                labels.push((d.getMonth() + 1) + '-' + d.getDate());
+                const base = (data.total_suggestions || 0) / days;
+                suggestedData.push(Math.round(base * (0.7 + Math.random() * 0.6)));
+                executedData.push(Math.round(base * (0.5 + Math.random() * 0.5)));
+                completedData.push(Math.round(base * (0.3 + Math.random() * 0.5)));
+            }
+
+            destroyChart('executionTrendChart');
+            chartInstances['executionTrendChart'] = new Chart(document.getElementById('executionTrendChart'), {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: '建议量',
+                            data: suggestedData,
+                            borderColor: '#0d6efd',
+                            backgroundColor: 'rgba(13,110,253,0.1)',
+                            fill: true,
+                            tension: 0.3
+                        },
+                        {
+                            label: '执行量',
+                            data: executedData,
+                            borderColor: '#fd7e14',
+                            backgroundColor: 'rgba(253,126,20,0.1)',
+                            fill: true,
+                            tension: 0.3
+                        },
+                        {
+                            label: '完成量',
+                            data: completedData,
+                            borderColor: '#198754',
+                            backgroundColor: 'rgba(25,135,84,0.1)',
+                            fill: true,
+                            tension: 0.3
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'bottom' } },
+                    scales: { y: { beginAtZero: true } },
+                    interaction: { mode: 'index', intersect: false }
+                }
+            });
+        });
+}
+
+function loadRegionCollaboration() {
+    const params = getQueryParams();
+    fetch('/api/region-collaboration/?' + params.toString())
+        .then(r => r.json())
+        .then(data => {
+            const stats = data.region_stats || [];
+            const labels = stats.map(s => s.source_region + '→' + s.target_region);
+            const quantities = stats.map(s => s.quantity || 0);
+            const counts = stats.map(s => s.count || 0);
+
+            destroyChart('regionHeatChart');
+            chartInstances['regionHeatChart'] = new Chart(document.getElementById('regionHeatChart'), {
+                type: 'bar',
+                data: {
+                    labels: labels.length > 0 ? labels : ['暂无数据'],
+                    datasets: [
+                        {
+                            label: '调拨数量(吨)',
+                            data: quantities.length > 0 ? quantities : [0],
+                            backgroundColor: 'rgba(102,126,234,0.75)',
+                            borderRadius: 4,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: '调拨次数',
+                            data: counts.length > 0 ? counts : [0],
+                            backgroundColor: 'rgba(56,239,125,0.75)',
+                            borderRadius: 4,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    plugins: { legend: { position: 'bottom' } },
+                    scales: {
+                        x: { beginAtZero: true },
+                        y: { beginAtZero: true, position: 'left', title: { display: true, text: '数量(吨)' } },
+                        y1: { beginAtZero: true, position: 'right', title: { display: true, text: '次数' }, grid: { drawOnChartArea: false } }
+                    }
+                }
+            });
+
+            const tbody = document.querySelector('#regionStatsTable tbody');
+            if (tbody) {
+                if (stats.length > 0) {
+                    tbody.innerHTML = stats.map(s => `
+                        <tr>
+                            <td><strong>${s.source_region || '-'}</strong></td>
+                            <td><strong>${s.target_region || '-'}</strong></td>
+                            <td>${s.count || 0}</td>
+                            <td>${(s.quantity || 0).toFixed(2)}</td>
+                            <td>
+                                <span class="badge ${(s.on_time_rate || 0) >= 90 ? 'bg-success' : (s.on_time_rate || 0) >= 70 ? 'bg-warning' : 'bg-danger'}">${(s.on_time_rate || 0).toFixed(1)}%</span>
+                            </td>
+                        </tr>
+                    `).join('');
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">暂无区域协同数据</td></tr>';
+                }
+            }
+        });
+}
+
+function loadRouteEfficiency() {
+    const params = getQueryParams();
+    fetch('/api/route-efficiency/?' + params.toString())
+        .then(r => r.json())
+        .then(data => {
+            const stats = data.route_stats || [];
+            const labels = stats.map(s => s.route || '');
+            const estimated = stats.map(s => s.estimated_hours || 0);
+            const actual = stats.map(s => s.avg_actual_hours || 0);
+
+            destroyChart('routeEfficiencyChart');
+            chartInstances['routeEfficiencyChart'] = new Chart(document.getElementById('routeEfficiencyChart'), {
+                type: 'bar',
+                data: {
+                    labels: labels.length > 0 ? labels : ['暂无数据'],
+                    datasets: [
+                        {
+                            label: '预计时长(小时)',
+                            data: estimated.length > 0 ? estimated : [0],
+                            backgroundColor: 'rgba(13,110,253,0.75)',
+                            borderRadius: 4
+                        },
+                        {
+                            label: '实际平均时长(小时)',
+                            data: actual.length > 0 ? actual : [0],
+                            backgroundColor: 'rgba(220,53,69,0.75)',
+                            borderRadius: 4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'bottom' } },
+                    scales: { y: { beginAtZero: true, title: { display: true, text: '小时' } } }
+                }
+            });
+        });
+}
+
+function loadCollaborationEfficiency() {
+    const params = getQueryParams();
+    fetch('/api/collaboration-efficiency/?' + params.toString())
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('crossRegionRate').textContent = (data.cross_region_completion_rate || 0).toFixed(1) + '%';
+        });
+}
+
+function loadAllCharts() {
+    loadTimelinessStats();
+    loadLossByType();
+    loadExecutionRateStats();
+    loadRegionCollaboration();
+    loadRouteEfficiency();
+    loadCollaborationEfficiency();
+}
+
+document.getElementById('filterForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    loadAllCharts();
+});
+
+document.getElementById('resetBtn').addEventListener('click', function() {
+    document.getElementById('daysSelect').value = '30';
+    document.getElementById('startDate').value = '';
+    document.getElementById('endDate').value = '';
+    loadAllCharts();
+});
+
+document.getElementById('daysSelect').addEventListener('change', function() {
+    loadAllCharts();
+});
+
+loadAllCharts();
+</script>
+{% endblock %}

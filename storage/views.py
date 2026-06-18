@@ -15,7 +15,9 @@ from .models import (
     VentilationLog, PestInspection, RiskAssessment,
     Warning, DisposalTask, DisposalProgressLog,
     InventoryChangeLog, AllocationConfig, AllocationSuggestion,
-    AllocationExecution, GrainSituationPrediction
+    AllocationExecution, GrainSituationPrediction,
+    Region, TransportRoute, AllocationBatch, ExecutionNode,
+    AbnormalLoss, ArrivalVerification
 )
 from .forms import (
     GrainTypeForm, GranaryForm, TemperatureHumidityLogForm,
@@ -24,13 +26,19 @@ from .forms import (
     DisposalSubmitForm, DisposalReviewForm, DisposalArchiveForm, WarningFilterForm,
     InventoryChangeLogForm, AllocationConfigForm, AllocationSuggestionForm,
     AllocationSuggestionApproveForm, AllocationExecutionForm,
-    PredictionGenerateForm, AllocationGenerateForm
+    PredictionGenerateForm, AllocationGenerateForm,
+    RegionForm, TransportRouteForm, AllocationBatchForm,
+    BatchSplitForm, BatchMergeForm, ExecutionNodeForm,
+    NodeCompleteForm, AbnormalLossForm, LossHandleForm,
+    ArrivalVerificationForm, VerificationConfirmForm, GranaryRegionForm
 )
 from .services import (
     RiskCalculator, recalculate_risks_after_ventilation, recalculate_risks_for_granary,
     WarningService, DisposalService, WarningStatisticsService,
     GrainSituationPredictionService, InventoryService, AllocationService,
-    PredictionStatisticsService
+    PredictionStatisticsService,
+    BatchService, NodeTrackingService, LossService,
+    ArrivalVerificationService, CollaborativeAnalyticsService
 )
 
 
@@ -1316,11 +1324,19 @@ class AllocationExecutionListView(ListView):
 
 
 def allocation_execution_detail(request, pk):
-    execution = get_object_or_404(AllocationExecution, pk=pk)
+    execution = get_object_or_404(AllocationExecution.objects.select_related(
+        'suggestion__source_granary', 'suggestion__target_granary'
+    ), pk=pk)
+    batches = execution.batches.select_related('route').order_by('-created_at')
+    batch_form = AllocationBatchForm(execution=execution)
+    merge_form = BatchMergeForm()
     form = AllocationExecutionForm(instance=execution)
     return render(request, 'allocation/execution_detail.html', {
         'execution': execution,
         'form': form,
+        'batches': batches,
+        'batch_form': batch_form,
+        'merge_form': merge_form,
     })
 
 
@@ -1528,4 +1544,568 @@ def api_allocation_cost(request):
     return JsonResponse({
         'labels': sorted_dates,
         'costs': [round(date_map[d], 2) for d in sorted_dates],
+    })
+
+
+# -------------------- Region Views --------------------
+class RegionListView(ListView):
+    model = Region
+    template_name = 'region/list.html'
+    context_object_name = 'regions'
+    ordering = ['code']
+
+
+class RegionCreateView(CreateView):
+    model = Region
+    form_class = RegionForm
+    template_name = 'region/form.html'
+    success_url = reverse_lazy('region_list')
+
+    def form_valid(self, form):
+        messages.success(self.request, '区域创建成功')
+        return super().form_valid(form)
+
+
+class RegionUpdateView(UpdateView):
+    model = Region
+    form_class = RegionForm
+    template_name = 'region/form.html'
+    success_url = reverse_lazy('region_list')
+
+    def form_valid(self, form):
+        messages.success(self.request, '区域更新成功')
+        return super().form_valid(form)
+
+
+class RegionDeleteView(DeleteView):
+    model = Region
+    template_name = 'region/confirm_delete.html'
+    success_url = reverse_lazy('region_list')
+
+    def delete(self, request, *args, **kwargs):
+        obj = self.get_object()
+        if obj.granaries.exists() or obj.children.exists():
+            messages.error(request, '该区域下有粮仓或子区域，无法删除')
+            return redirect(self.success_url)
+        messages.success(request, '区域删除成功')
+        return super().delete(request, *args, **kwargs)
+
+
+# -------------------- Transport Route Views --------------------
+class TransportRouteListView(ListView):
+    model = TransportRoute
+    template_name = 'transport_route/list.html'
+    context_object_name = 'routes'
+    ordering = ['source_granary__code']
+    paginate_by = 30
+
+    def get_queryset(self):
+        qs = super().get_queryset().select_related('source_granary', 'target_granary')
+        source_id = self.request.GET.get('source')
+        target_id = self.request.GET.get('target')
+        if source_id:
+            qs = qs.filter(source_granary_id=source_id)
+        if target_id:
+            qs = qs.filter(target_granary_id=target_id)
+        return qs
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['granaries'] = Granary.objects.filter(is_active=True)
+        ctx['selected_source'] = self.request.GET.get('source', '')
+        ctx['selected_target'] = self.request.GET.get('target', '')
+        return ctx
+
+
+class TransportRouteCreateView(CreateView):
+    model = TransportRoute
+    form_class = TransportRouteForm
+    template_name = 'transport_route/form.html'
+    success_url = reverse_lazy('transport_route_list')
+
+    def form_valid(self, form):
+        messages.success(self.request, '运输路径创建成功')
+        return super().form_valid(form)
+
+
+class TransportRouteUpdateView(UpdateView):
+    model = TransportRoute
+    form_class = TransportRouteForm
+    template_name = 'transport_route/form.html'
+    success_url = reverse_lazy('transport_route_list')
+
+    def form_valid(self, form):
+        messages.success(self.request, '运输路径更新成功')
+        return super().form_valid(form)
+
+
+class TransportRouteDeleteView(DeleteView):
+    model = TransportRoute
+    template_name = 'transport_route/confirm_delete.html'
+    success_url = reverse_lazy('transport_route_list')
+
+    def delete(self, request, *args, **kwargs):
+        messages.success(request, '运输路径删除成功')
+        return super().delete(request, *args, **kwargs)
+
+
+# -------------------- Batch Views --------------------
+def batch_list(request):
+    status = request.GET.get('status', '')
+    execution_id = request.GET.get('execution', '')
+    queryset = AllocationBatch.objects.select_related(
+        'execution', 'execution__suggestion__source_granary',
+        'execution__suggestion__target_granary', 'route'
+    ).order_by('-created_at')
+
+    if status:
+        queryset = queryset.filter(status=status)
+    if execution_id:
+        queryset = queryset.filter(execution_id=execution_id)
+
+    return render(request, 'batch/list.html', {
+        'batches': queryset[:100],
+        'selected_status': status,
+        'selected_execution': execution_id,
+    })
+
+
+def batch_detail(request, pk):
+    batch = get_object_or_404(AllocationBatch.objects.select_related(
+        'execution__suggestion__source_granary',
+        'execution__suggestion__target_granary',
+        'route'
+    ), pk=pk)
+    nodes = batch.nodes.all().order_by('node_order')
+    losses = batch.abnormal_losses.all().order_by('-created_at')
+    verification = getattr(batch, 'arrival_verification', None)
+
+    batch_form = AllocationBatchForm(instance=batch, execution=batch.execution)
+    split_form = BatchSplitForm()
+    node_form = ExecutionNodeForm()
+    node_complete_form = NodeCompleteForm()
+    loss_form = AbnormalLossForm()
+    loss_handle_form = LossHandleForm()
+    verification_form = ArrivalVerificationForm(instance=verification) if verification else None
+    verification_create_form = ArrivalVerificationForm()
+    confirm_form = VerificationConfirmForm()
+
+    return render(request, 'batch/detail.html', {
+        'batch': batch,
+        'nodes': nodes,
+        'losses': losses,
+        'verification': verification,
+        'batch_form': batch_form,
+        'split_form': split_form,
+        'node_form': node_form,
+        'node_complete_form': node_complete_form,
+        'loss_form': loss_form,
+        'loss_handle_form': loss_handle_form,
+        'verification_form': verification_form,
+        'verification_create_form': verification_create_form,
+        'confirm_form': confirm_form,
+    })
+
+
+def batch_update(request, pk):
+    batch = get_object_or_404(AllocationBatch, pk=pk)
+    if request.method == 'POST':
+        form = AllocationBatchForm(request.POST, instance=batch, execution=batch.execution)
+        if form.is_valid():
+            form.save()
+            messages.success(request, '批次信息已更新')
+            return redirect('batch_detail', pk=pk)
+    return redirect('batch_detail', pk=pk)
+
+
+def batch_update_status(request, pk):
+    batch = get_object_or_404(AllocationBatch, pk=pk)
+    if request.method == 'POST':
+        status = request.POST.get('status')
+        operator = request.POST.get('operator', '系统')
+        try:
+            BatchService.update_batch_status(batch, status=status, operator=operator)
+            if status == 'in_transit' and not batch.nodes.exists():
+                NodeTrackingService.create_default_nodes(batch)
+            messages.success(request, f'状态已更新为：{batch.get_status_display()}')
+        except Exception as e:
+            messages.error(request, f'状态更新失败：{str(e)}')
+    return redirect('batch_detail', pk=pk)
+
+
+def batch_split(request, pk):
+    batch = get_object_or_404(AllocationBatch, pk=pk)
+    if request.method == 'POST':
+        form = BatchSplitForm(request.POST)
+        if form.is_valid():
+            try:
+                child_batches = BatchService.split_batch(
+                    batch,
+                    split_quantities=form.cleaned_data['quantities'],
+                    operator=form.cleaned_data.get('operator'),
+                )
+                for child in child_batches:
+                    NodeTrackingService.create_default_nodes(child)
+                messages.success(request, f'批次已拆分为{len(child_batches)}个子批次')
+                return redirect('allocation_execution_detail', pk=batch.execution_id)
+            except ValueError as e:
+                messages.error(request, str(e))
+    return redirect('batch_detail', pk=pk)
+
+
+def batch_merge(request, execution_pk):
+    execution = get_object_or_404(AllocationExecution, pk=execution_pk)
+    if request.method == 'POST':
+        form = BatchMergeForm(request.POST)
+        if form.is_valid():
+            batch_ids_str = form.cleaned_data.get('batch_ids', '')
+            batch_ids = [int(x) for x in batch_ids_str.split(',') if x.strip()]
+            batches = AllocationBatch.objects.filter(
+                pk__in=batch_ids, execution_id=execution_pk
+            )
+            try:
+                merged = BatchService.merge_batches(
+                    list(batches),
+                    operator=form.cleaned_data.get('operator'),
+                )
+                NodeTrackingService.create_default_nodes(merged)
+                messages.success(request, f'已合并为批次：{merged.batch_no}')
+            except ValueError as e:
+                messages.error(request, str(e))
+    return redirect('allocation_execution_detail', pk=execution_pk)
+
+
+def batch_create(request, execution_pk):
+    execution = get_object_or_404(AllocationExecution, pk=execution_pk)
+    if request.method == 'POST':
+        form = AllocationBatchForm(request.POST, execution=execution)
+        if form.is_valid():
+            try:
+                batch = BatchService.create_batch(
+                    execution=execution,
+                    quantity=form.cleaned_data['quantity'],
+                    route=form.cleaned_data.get('route'),
+                    operator=form.cleaned_data.get('operator'),
+                    estimated_departure=form.cleaned_data.get('estimated_departure'),
+                    estimated_arrival=form.cleaned_data.get('estimated_arrival'),
+                    transporter=form.cleaned_data.get('transporter'),
+                    vehicle_no=form.cleaned_data.get('vehicle_no'),
+                    driver=form.cleaned_data.get('driver'),
+                    driver_phone=form.cleaned_data.get('driver_phone'),
+                    remark=form.cleaned_data.get('remark'),
+                )
+                NodeTrackingService.create_default_nodes(batch)
+                messages.success(request, f'批次创建成功：{batch.batch_no}')
+                return redirect('batch_detail', pk=batch.pk)
+            except ValueError as e:
+                messages.error(request, str(e))
+    return redirect('allocation_execution_detail', pk=execution_pk)
+
+
+# -------------------- Execution Node Views --------------------
+def node_create(request, batch_pk):
+    batch = get_object_or_404(AllocationBatch, pk=batch_pk)
+    if request.method == 'POST':
+        form = ExecutionNodeForm(request.POST)
+        if form.is_valid():
+            node = NodeTrackingService.create_node(
+                batch=batch,
+                node_type=form.cleaned_data['node_type'],
+                node_name=form.cleaned_data['node_name'],
+                node_order=form.cleaned_data.get('node_order', 0),
+                location=form.cleaned_data.get('location'),
+                granary=form.cleaned_data.get('granary'),
+                planned_time=form.cleaned_data.get('planned_time'),
+                remark=form.cleaned_data.get('remark'),
+            )
+            messages.success(request, f'节点创建成功：{node.node_name}')
+    return redirect('batch_detail', pk=batch_pk)
+
+
+def node_complete(request, pk):
+    node = get_object_or_404(ExecutionNode, pk=pk)
+    if request.method == 'POST':
+        form = NodeCompleteForm(request.POST)
+        if form.is_valid():
+            NodeTrackingService.complete_node(
+                node=node,
+                operator=form.cleaned_data.get('operator'),
+                quantity_checked=form.cleaned_data.get('quantity_checked'),
+                temperature=form.cleaned_data.get('temperature'),
+                humidity=form.cleaned_data.get('humidity'),
+                remark=form.cleaned_data.get('remark'),
+            )
+            messages.success(request, f'节点"{node.node_name}"已完成')
+    return redirect('batch_detail', pk=node.batch_id)
+
+
+def node_depart(request, pk):
+    node = get_object_or_404(ExecutionNode, pk=pk)
+    if request.method == 'POST':
+        operator = request.POST.get('operator', '系统')
+        NodeTrackingService.depart_node(node, operator=operator)
+        messages.success(request, f'已从节点"{node.node_name}"出发')
+    return redirect('batch_detail', pk=node.batch_id)
+
+
+def node_delete(request, pk):
+    node = get_object_or_404(ExecutionNode, pk=pk)
+    batch_id = node.batch_id
+    node.delete()
+    messages.success(request, '节点已删除')
+    return redirect('batch_detail', pk=batch_id)
+
+
+# -------------------- Abnormal Loss Views --------------------
+def loss_list(request):
+    status = request.GET.get('status', '')
+    loss_type = request.GET.get('loss_type', '')
+    queryset = AbnormalLoss.objects.select_related(
+        'batch', 'batch__execution__suggestion__source_granary',
+        'batch__execution__suggestion__target_granary', 'node'
+    ).order_by('-created_at')
+
+    if status:
+        queryset = queryset.filter(status=status)
+    if loss_type:
+        queryset = queryset.filter(loss_type=loss_type)
+
+    return render(request, 'loss/list.html', {
+        'losses': queryset[:100],
+        'selected_status': status,
+        'selected_type': loss_type,
+    })
+
+
+def loss_create(request, batch_pk):
+    batch = get_object_or_404(AllocationBatch, pk=batch_pk)
+    if request.method == 'POST':
+        form = AbnormalLossForm(request.POST)
+        if form.is_valid():
+            loss = LossService.report_loss(
+                batch=batch,
+                loss_type=form.cleaned_data['loss_type'],
+                loss_quantity=form.cleaned_data['loss_quantity'],
+                description=form.cleaned_data['description'],
+                discovered_by=form.cleaned_data.get('discovered_by'),
+                severity=form.cleaned_data.get('severity', 'moderate'),
+                estimated_cost=form.cleaned_data.get('estimated_cost', 0),
+                discovered_location=form.cleaned_data.get('discovered_location'),
+            )
+            messages.success(request, f'损耗已登记：{loss.get_loss_type_display()} {loss.loss_quantity}吨')
+    return redirect('batch_detail', pk=batch_pk)
+
+
+def loss_handle(request, pk):
+    loss = get_object_or_404(AbnormalLoss, pk=pk)
+    if request.method == 'POST':
+        form = LossHandleForm(request.POST)
+        if form.is_valid():
+            action = request.POST.get('action', 'investigate')
+            data = form.cleaned_data
+            try:
+                if action == 'investigate':
+                    LossService.investigate_loss(
+                        loss,
+                        cause_analysis=data.get('cause_analysis', ''),
+                        handled_by=data.get('handled_by'),
+                    )
+                    messages.success(request, '已进入调查阶段')
+                elif action == 'resolve':
+                    LossService.resolve_loss(
+                        loss,
+                        handling_measures=data.get('handling_measures', ''),
+                        handled_by=data.get('handled_by'),
+                    )
+                    messages.success(request, '已完成处置')
+                elif action == 'confirm':
+                    LossService.confirm_loss(
+                        loss,
+                        actual_cost=data.get('actual_cost'),
+                        confirmed_by=data.get('confirmed_by'),
+                        handling_result=data.get('handling_result'),
+                    )
+                    messages.success(request, '已确认损失')
+                elif action == 'close':
+                    LossService.close_loss(loss, remark=data.get('remark'))
+                    messages.success(request, '已归档关闭')
+            except Exception as e:
+                messages.error(request, str(e))
+    return redirect('batch_detail', pk=loss.batch_id)
+
+
+# -------------------- Arrival Verification Views --------------------
+def verification_list(request):
+    status = request.GET.get('status', '')
+    queryset = ArrivalVerification.objects.select_related(
+        'batch', 'batch__execution__suggestion__source_granary',
+        'batch__execution__suggestion__target_granary'
+    ).order_by('-created_at')
+
+    if status:
+        queryset = queryset.filter(status=status)
+
+    return render(request, 'verification/list.html', {
+        'verifications': queryset[:100],
+        'selected_status': status,
+    })
+
+
+def verification_create(request, batch_pk):
+    batch = get_object_or_404(AllocationBatch, pk=batch_pk)
+    if request.method == 'POST':
+        form = ArrivalVerificationForm(request.POST)
+        if form.is_valid():
+            try:
+                verification = ArrivalVerificationService.create_verification(
+                    batch=batch,
+                    actual_received=form.cleaned_data.get('actual_received'),
+                )
+                messages.success(request, f'到仓复核已创建：{verification.verification_no}')
+                return redirect('verification_detail', pk=verification.pk)
+            except ValueError as e:
+                messages.error(request, str(e))
+    return redirect('batch_detail', pk=batch_pk)
+
+
+def verification_detail(request, pk):
+    verification = get_object_or_404(ArrivalVerification.objects.select_related(
+        'batch', 'batch__execution__suggestion__source_granary',
+        'batch__execution__suggestion__target_granary'
+    ), pk=pk)
+    form = ArrivalVerificationForm(instance=verification)
+    confirm_form = VerificationConfirmForm()
+    return render(request, 'verification/detail.html', {
+        'verification': verification,
+        'form': form,
+        'confirm_form': confirm_form,
+    })
+
+
+def verification_submit(request, pk):
+    verification = get_object_or_404(ArrivalVerification, pk=pk)
+    if request.method == 'POST':
+        form = ArrivalVerificationForm(request.POST, instance=verification)
+        if form.is_valid():
+            ArrivalVerificationService.verify(
+                verification=verification,
+                actual_received=form.cleaned_data['actual_received'],
+                quality_check_passed=form.cleaned_data.get('quality_check_passed', True),
+                verifier=form.cleaned_data.get('verifier'),
+                quality_report=form.cleaned_data.get('quality_report'),
+                moisture_content=form.cleaned_data.get('moisture_content'),
+                impurity_rate=form.cleaned_data.get('impurity_rate'),
+                temperature=form.cleaned_data.get('temperature'),
+                discrepancy_description=form.cleaned_data.get('discrepancy_description'),
+                handling_suggestion=form.cleaned_data.get('handling_suggestion'),
+                remark=form.cleaned_data.get('remark'),
+            )
+            messages.success(request, f'复核完成，状态：{verification.get_status_display()}')
+            return redirect('verification_detail', pk=pk)
+    return redirect('verification_detail', pk=pk)
+
+
+def verification_confirm(request, pk):
+    verification = get_object_or_404(ArrivalVerification, pk=pk)
+    if request.method == 'POST':
+        form = VerificationConfirmForm(request.POST)
+        if form.is_valid():
+            ArrivalVerificationService.confirm_verification(
+                verification=verification,
+                confirmed_by=form.cleaned_data['confirmed_by'],
+                handling_suggestion=form.cleaned_data.get('handling_suggestion'),
+            )
+            messages.success(request, '复核结果已确认')
+    return redirect('verification_detail', pk=pk)
+
+
+# -------------------- Collaborative Analytics Views --------------------
+def collaborative_dashboard(request):
+    days = int(request.GET.get('days', 30))
+    start_date_str = request.GET.get('start_date', '')
+    end_date_str = request.GET.get('end_date', '')
+
+    start_date = None
+    end_date = None
+    if start_date_str:
+        from datetime import datetime
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+    if end_date_str:
+        from datetime import datetime
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+
+    timeliness = CollaborativeAnalyticsService.get_timeliness_stats(days, start_date, end_date)
+    loss_stats = CollaborativeAnalyticsService.get_loss_rate_stats(days, start_date, end_date)
+    execution_stats = CollaborativeAnalyticsService.get_execution_rate_stats(days, start_date, end_date)
+    efficiency = CollaborativeAnalyticsService.get_collaboration_efficiency(days, start_date, end_date)
+    region_stats = CollaborativeAnalyticsService.get_region_collaboration_stats(days)
+    route_stats = CollaborativeAnalyticsService.get_transport_route_stats(days)
+
+    return render(request, 'allocation/collaborative_dashboard.html', {
+        'timeliness': timeliness,
+        'loss_stats': loss_stats,
+        'execution_stats': execution_stats,
+        'efficiency': efficiency,
+        'region_stats': region_stats,
+        'route_stats': route_stats,
+        'days': days,
+        'start_date': start_date_str,
+        'end_date': end_date_str,
+    })
+
+
+# -------------------- Collaborative Analytics API Views --------------------
+def api_timeliness_stats(request):
+    days = int(request.GET.get('days', 30))
+    data = CollaborativeAnalyticsService.get_timeliness_stats(days)
+    return JsonResponse(data)
+
+
+def api_loss_rate_stats(request):
+    days = int(request.GET.get('days', 30))
+    data = CollaborativeAnalyticsService.get_loss_rate_stats(days)
+    return JsonResponse(data)
+
+
+def api_execution_rate_stats(request):
+    days = int(request.GET.get('days', 30))
+    data = CollaborativeAnalyticsService.get_execution_rate_stats(days)
+    return JsonResponse(data)
+
+
+def api_collaboration_efficiency(request):
+    days = int(request.GET.get('days', 30))
+    data = CollaborativeAnalyticsService.get_collaboration_efficiency(days)
+    return JsonResponse(data)
+
+
+def api_region_collaboration(request):
+    days = int(request.GET.get('days', 30))
+    data = CollaborativeAnalyticsService.get_region_collaboration_stats(days)
+    return JsonResponse({
+        'labels': [f"{d['source_region']}→{d['target_region']}" for d in data],
+        'counts': [d['count'] for d in data],
+        'quantities': [d['quantity'] for d in data],
+    })
+
+
+def api_route_efficiency(request):
+    days = int(request.GET.get('days', 30))
+    data = CollaborativeAnalyticsService.get_transport_route_stats(days)
+    return JsonResponse({
+        'labels': [d['route'] for d in data],
+        'counts': [d['count'] for d in data],
+        'efficiency_rates': [d['efficiency_rate'] for d in data],
+        'estimated_hours': [d['estimated_hours'] for d in data],
+        'actual_hours': [d['avg_actual_hours'] for d in data],
+    })
+
+
+def api_loss_by_type(request):
+    days = int(request.GET.get('days', 30))
+    data = CollaborativeAnalyticsService.get_loss_rate_stats(days)
+    loss_by_type = data.get('loss_by_type', {})
+    return JsonResponse({
+        'labels': list(loss_by_type.keys()),
+        'quantities': [round(v, 2) for v in loss_by_type.values()],
     })

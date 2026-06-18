@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block title %}{% if object %}编辑{% else %}新增{% endif %}区域 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-map me-2"></i>{% if object %}编辑{% else %}新增{% endif %}区域</h3>
+    <a href="{% url 'region_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回列表</a>
+</div>
+
+<div class="card stat-card">
+    <div class="card-body">
+        <form method="post" novalidate>
+            {% csrf_token %}
+            {% if form.non_field_errors %}
+                <div class="alert alert-danger">{% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}</div>
+            {% endif %}
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.code.label }} <span class="text-danger">*</span></label>
+                    {{ form.code }}
+                    {% if form.code.errors %}<div class="text-danger small mt-1">{{ form.code.errors.0 }}</div>{% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.name.label }} <span class="text-danger">*</span></label>
+                    {{ form.name }}
+                    {% if form.name.errors %}<div class="text-danger small mt-1">{{ form.name.errors.0 }}</div>{% endif %}
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">{{ form.parent.label }}</label>
+                    {{ form.parent }}
+                    {% if form.parent.errors %}<div class="text-danger small mt-1">{{ form.parent.errors.0 }}</div>{% endif %}
+                    <small class="text-muted d-block">不选择则为顶级区域</small>
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">{{ form.description.label }}</label>
+                    {{ form.description }}
+                    {% if form.description.errors %}<div class="text-danger small mt-1">{{ form.description.errors.0 }}</div>{% endif %}
+                </div>
+            </div>
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary me-2"><i class="bi bi-check-lg me-1"></i>保存</button>
+                <a href="{% url 'region_list' %}" class="btn btn-secondary">取消</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

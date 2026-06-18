@@ -102,4 +102,53 @@ urlpatterns = [
 
     # Analysis views
     path('allocation/analysis/', views.allocation_analysis, name='allocation_analysis'),
+
+    # Region views
+    path('regions/', views.RegionListView.as_view(), name='region_list'),
+    path('regions/create/', views.RegionCreateView.as_view(), name='region_create'),
+    path('regions/<int:pk>/update/', views.RegionUpdateView.as_view(), name='region_update'),
+    path('regions/<int:pk>/delete/', views.RegionDeleteView.as_view(), name='region_delete'),
+
+    # Transport route views
+    path('transport-routes/', views.TransportRouteListView.as_view(), name='transport_route_list'),
+    path('transport-routes/create/', views.TransportRouteCreateView.as_view(), name='transport_route_create'),
+    path('transport-routes/<int:pk>/update/', views.TransportRouteUpdateView.as_view(), name='transport_route_update'),
+    path('transport-routes/<int:pk>/delete/', views.TransportRouteDeleteView.as_view(), name='transport_route_delete'),
+
+    # Batch views
+    path('batches/', views.batch_list, name='batch_list'),
+    path('batches/<int:pk>/', views.batch_detail, name='batch_detail'),
+    path('batches/<int:pk>/update/', views.batch_update, name='batch_update'),
+    path('batches/<int:pk>/status/', views.batch_update_status, name='batch_status'),
+    path('batches/<int:pk>/split/', views.batch_split, name='batch_split'),
+    path('executions/<int:execution_pk>/batches/create/', views.batch_create, name='batch_create'),
+    path('executions/<int:execution_pk>/batches/merge/', views.batch_merge, name='batch_merge'),
+
+    # Execution node views
+    path('batches/<int:batch_pk>/nodes/create/', views.node_create, name='node_create'),
+    path('nodes/<int:pk>/complete/', views.node_complete, name='node_complete'),
+    path('nodes/<int:pk>/depart/', views.node_depart, name='node_depart'),
+    path('nodes/<int:pk>/delete/', views.node_delete, name='node_delete'),
+
+    # Abnormal loss views
+    path('losses/', views.loss_list, name='loss_list'),
+    path('batches/<int:batch_pk>/losses/create/', views.loss_create, name='loss_create'),
+    path('losses/<int:pk>/handle/', views.loss_handle, name='loss_handle'),
+
+    # Arrival verification views
+    path('verifications/', views.verification_list, name='verification_list'),
+    path('verifications/<int:pk>/', views.verification_detail, name='verification_detail'),
+    path('verifications/<int:pk>/submit/', views.verification_submit, name='verification_submit'),
+    path('verifications/<int:pk>/confirm/', views.verification_confirm, name='verification_confirm'),
+    path('batches/<int:batch_pk>/verifications/create/', views.verification_create, name='verification_create'),
+
+    # Collaborative analytics views
+    path('allocation/collaborative/', views.collaborative_dashboard, name='collaborative_dashboard'),
+    path('api/timeliness-stats/', views.api_timeliness_stats, name='api_timeliness_stats'),
+    path('api/loss-rate-stats/', views.api_loss_rate_stats, name='api_loss_rate_stats'),
+    path('api/execution-rate-stats/', views.api_execution_rate_stats, name='api_execution_rate_stats'),
+    path('api/collaboration-efficiency/', views.api_collaboration_efficiency, name='api_collaboration_efficiency'),
+    path('api/region-collaboration/', views.api_region_collaboration, name='api_region_collaboration'),
+    path('api/route-efficiency/', views.api_route_efficiency, name='api_route_efficiency'),
+    path('api/loss-by-type/', views.api_loss_by_type, name='api_loss_by_type'),
 ]
