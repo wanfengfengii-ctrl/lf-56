@@ -1,0 +1,208 @@
+{% extends 'base.html' %}
+{% block title %}指令详情 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-megaphone-fill me-2"></i>指挥指令详情</h3>
+    <div>
+        <a href="{% url 'emergency_command_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回列表</a>
+        {% if command.event %}
+        <a href="{% url 'emergency_detail' command.event.pk %}" class="btn btn-outline-info ms-2"><i class="bi bi-exclamation-triangle me-1"></i>关联事件</a>
+        {% endif %}
+        {% if command.status == 'pending' %}
+        <button class="btn btn-success ms-2" data-bs-toggle="modal" data-bs-target="#acknowledgeModal">
+            <i class="bi bi-check-circle me-1"></i>确认接收
+        </button>
+        {% endif %}
+        {% if command.status == 'in_progress' %}
+        <button class="btn btn-primary ms-2" data-bs-toggle="modal" data-bs-target="#completeModal">
+            <i class="bi bi-check2-square me-1"></i>反馈完成
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-8 mb-4">
+        <div class="card stat-card">
+            <div class="card-body">
+                <h5 class="card-title mb-3"><i class="bi bi-info-circle me-2 text-primary"></i>指令基本信息</h5>
+                <table class="table table-borderless mb-0">
+                    <tr><th style="width: 140px;" class="text-muted">指令编号</th><td class="fw-bold">{{ command.command_code }}</td></tr>
+                    <tr><th class="text-muted">关联事件</th><td>{% if command.event %}<a href="{% url 'emergency_detail' command.event.pk %}">{{ command.event.title }}</a>{% else %}-{% endif %}</td></tr>
+                    <tr><th class="text-muted">指令内容</th><td>{{ command.content|linebreaks }}</td></tr>
+                    <tr><th class="text-muted">下发人</th><td>{{ command.issuer|default:'-' }}</td></tr>
+                    <tr><th class="text-muted">接收人</th><td>{{ command.receiver }}</td></tr>
+                    <tr><th class="text-muted">优先级</th><td><span class="risk-badge priority-{{ command.priority }}">{{ command.get_priority_display }}</span></td></tr>
+                    <tr><th class="text-muted">下发时间</th><td>{{ command.issue_time|date:'Y-m-d H:i:s' }}</td></tr>
+                    <tr><th class="text-muted">要求完成时间</th>
+                        <td>
+                            {% if command.deadline %}
+                            <span class="{% if command.is_overdue and command.status != 'completed' %}text-danger fw-bold{% endif %}">
+                                {{ command.deadline|date:'Y-m-d H:i' }}
+                                {% if command.is_overdue and command.status != 'completed' %}
+                                <span class="badge bg-danger ms-1">已超时</span>
+                                {% endif %}
+                            </span>
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr><th class="text-muted">当前状态</th><td><span class="risk-badge status-{{ command.status }}">{{ command.get_status_display }}</span></td></tr>
+                    {% if command.attachment %}
+                    <tr><th class="text-muted">附件说明</th><td>{{ command.attachment }}</td></tr>
+                    {% endif %}
+                    {% if command.acknowledged_by %}
+                    <tr><th class="text-muted">确认人</th><td>{{ command.acknowledged_by }}</td></tr>
+                    <tr><th class="text-muted">确认时间</th><td>{{ command.acknowledged_time|date:'Y-m-d H:i' }}</td></tr>
+                    {% endif %}
+                    {% if command.completed_by %}
+                    <tr><th class="text-muted">完成人</th><td>{{ command.completed_by }}</td></tr>
+                    <tr><th class="text-muted">完成时间</th><td>{{ command.completed_time|date:'Y-m-d H:i' }}</td></tr>
+                    <tr><th class="text-muted">完成反馈</th><td>{{ command.completion_feedback|linebreaks|default:'-' }}</td></tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-4">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <h5 class="card-title mb-3"><i class="bi bi-activity me-2 text-primary"></i>指令进度</h5>
+                <div class="text-center mb-4">
+                    {% if command.status == 'pending' %}
+                    <i class="bi bi-clock display-3 text-warning mb-3"></i>
+                    <h4 class="text-warning">待响应</h4>
+                    <p class="text-muted small">等待接收人确认</p>
+                    {% elif command.status == 'in_progress' %}
+                    <i class="bi bi-hourglass-split display-3 text-info mb-3"></i>
+                    <h4 class="text-info">执行中</h4>
+                    <p class="text-muted small">正在按照指令执行</p>
+                    {% elif command.status == 'completed' %}
+                    <i class="bi bi-check-circle-fill display-3 text-success mb-3"></i>
+                    <h4 class="text-success">已完成</h4>
+                    <p class="text-muted small">指令已完成执行</p>
+                    {% elif command.status == 'rejected' %}
+                    <i class="bi bi-x-circle-fill display-3 text-danger mb-3"></i>
+                    <h4 class="text-danger">已拒绝</h4>
+                    <p class="text-muted small">{{ command.reject_reason|default:'指令被拒绝' }}</p>
+                    {% endif %}
+                </div>
+                <div class="timeline-item">
+                    <div class="small text-muted">{{ command.issue_time|date:'Y-m-d H:i' }}</div>
+                    <div class="fw-bold">指令下发</div>
+                    <div class="small">由 {{ command.issuer|default:'系统' }} 下发</div>
+                </div>
+                {% if command.acknowledged_time %}
+                <div class="timeline-item">
+                    <div class="small text-muted">{{ command.acknowledged_time|date:'Y-m-d H:i' }}</div>
+                    <div class="fw-bold">确认接收</div>
+                    <div class="small">{{ command.acknowledged_by }} 已确认</div>
+                </div>
+                {% endif %}
+                {% if command.completed_time %}
+                <div class="timeline-item">
+                    <div class="small text-muted">{{ command.completed_time|date:'Y-m-d H:i' }}</div>
+                    <div class="fw-bold">执行完成</div>
+                    <div class="small">{{ command.completed_by }} 反馈完成</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if command.responses.all %}
+<div class="card stat-card">
+    <div class="card-header bg-white border-bottom">
+        <h5 class="mb-0"><i class="bi bi-chat-dots me-2 text-primary"></i>响应记录</h5>
+    </div>
+    <div class="card-body p-0">
+        <div style="max-height: 400px; overflow-y: auto;">
+            {% for resp in command.responses.all %}
+            <div class="list-group-item">
+                <div class="d-flex w-100 justify-content-between align-items-start mb-2">
+                    <div>
+                        <strong>{{ resp.responder }}</strong>
+                        <span class="badge bg-{{ resp.response_type == 'acknowledge'|yesno:'info,success,danger' }} ms-2">
+                            {{ resp.get_response_type_display }}
+                        </span>
+                    </div>
+                    <small class="text-muted">{{ resp.response_time|date:'Y-m-d H:i' }}</small>
+                </div>
+                {% if resp.content %}
+                <p class="mb-1">{{ resp.content|linebreaks }}</p>
+                {% endif %}
+                {% if resp.attachment %}
+                <div class="small text-muted"><i class="bi bi-paperclip me-1"></i>{{ resp.attachment }}</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="modal fade" id="acknowledgeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">确认接收指令</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" action="{% url 'emergency_command_acknowledge' command.pk %}">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">确认人 <span class="text-danger">*</span></label>
+                        <input type="text" name="operator" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">备注</label>
+                        <textarea name="remark" class="form-control" rows="2"></textarea>
+                    </div>
+                    <div class="alert alert-info mb-0">
+                        <i class="bi bi-info-circle me-2"></i>确认接收后，您将负责执行此指令，请按时完成。
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-success">确认接收</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="completeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">反馈完成</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" action="{% url 'emergency_command_complete' command.pk %}">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">完成人 <span class="text-danger">*</span></label>
+                        <input type="text" name="operator" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">完成情况说明 <span class="text-danger">*</span></label>
+                        <textarea name="feedback" class="form-control" rows="4" required placeholder="请详细说明指令执行情况和结果"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">附件说明</label>
+                        <input type="text" name="attachment" class="form-control" placeholder="如有相关证明文件，请在此说明">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">提交完成</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

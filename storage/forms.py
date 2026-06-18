@@ -9,7 +9,10 @@ from .models import (
     InventoryChangeLog, AllocationConfig, AllocationSuggestion,
     AllocationExecution, GrainSituationPrediction,
     Region, TransportRoute, AllocationBatch, ExecutionNode,
-    AbnormalLoss, ArrivalVerification
+    AbnormalLoss, ArrivalVerification,
+    EmergencyEvent, EmergencyPlan, EmergencyCommand,
+    EmergencyFeedback, EmergencyTask, EmergencyUpgrade,
+    EmergencyClosure, AlternativeRoute, EmergencyImpact
 )
 
 
@@ -826,3 +829,458 @@ class GranaryRegionForm(forms.ModelForm):
         self.fields['latitude'].required = False
         self.fields['longitude'].required = False
         self.fields['location'].required = False
+
+
+class EmergencyEventForm(forms.ModelForm):
+    class Meta:
+        model = EmergencyEvent
+        fields = ['event_type', 'severity', 'title', 'description', 'location',
+                  'latitude', 'longitude', 'reported_by', 'granary', 'region',
+                  'affected_area', 'affected_quantity', 'estimated_loss']
+        widgets = {
+            'event_type': forms.Select(attrs={'class': 'form-select'}),
+            'severity': forms.Select(attrs={'class': 'form-select'}),
+            'title': forms.TextInput(attrs={'class': 'form-control'}),
+            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
+            'location': forms.TextInput(attrs={'class': 'form-control'}),
+            'latitude': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.000001'}),
+            'longitude': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.000001'}),
+            'reported_by': forms.TextInput(attrs={'class': 'form-control'}),
+            'granary': forms.Select(attrs={'class': 'form-select'}),
+            'region': forms.Select(attrs={'class': 'form-select'}),
+            'affected_area': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'affected_quantity': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'estimated_loss': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['granary'].required = False
+        self.fields['granary'].queryset = Granary.objects.filter(is_active=True)
+        self.fields['granary'].empty_label = '无'
+        self.fields['region'].required = False
+        self.fields['region'].queryset = Region.objects.all()
+        self.fields['region'].empty_label = '无'
+        self.fields['latitude'].required = False
+        self.fields['longitude'].required = False
+        self.fields['affected_area'].required = False
+        self.fields['affected_quantity'].required = False
+        self.fields['estimated_loss'].required = False
+
+
+class EmergencyEventFilterForm(forms.Form):
+    event_type = forms.ChoiceField(
+        choices=[('', '全部类型')] + list(EmergencyEvent.EVENT_TYPE_CHOICES),
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-select form-select-sm'})
+    )
+    severity = forms.ChoiceField(
+        choices=[('', '全部等级')] + list(EmergencyEvent.SEVERITY_CHOICES),
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-select form-select-sm'})
+    )
+    status = forms.ChoiceField(
+        choices=[('', '全部状态')] + list(EmergencyEvent.STATUS_CHOICES),
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-select form-select-sm'})
+    )
+    granary = forms.ModelChoiceField(
+        queryset=Granary.objects.filter(is_active=True),
+        required=False,
+        empty_label='全部粮仓',
+        widget=forms.Select(attrs={'class': 'form-select form-select-sm'})
+    )
+    start_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={'class': 'form-control form-control-sm', 'type': 'date'})
+    )
+    end_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={'class': 'form-control form-control-sm', 'type': 'date'})
+    )
+
+
+class EmergencyPlanForm(forms.ModelForm):
+    class Meta:
+        model = EmergencyPlan
+        fields = ['plan_type', 'plan_name', 'objectives', 'measures',
+                  'resource_requirements', 'expected_effect', 'estimated_cost',
+                  'estimated_duration_hours', 'created_by']
+        widgets = {
+            'plan_type': forms.Select(attrs={'class': 'form-select'}),
+            'plan_name': forms.TextInput(attrs={'class': 'form-control'}),
+            'objectives': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'measures': forms.Textarea(attrs={'class': 'form-control', 'rows': 5}),
+            'resource_requirements': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'expected_effect': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'estimated_cost': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'estimated_duration_hours': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1'}),
+            'created_by': forms.TextInput(attrs={'class': 'form-control'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['resource_requirements'].required = False
+        self.fields['expected_effect'].required = False
+        self.fields['estimated_cost'].required = False
+        self.fields['estimated_duration_hours'].required = False
+
+
+class EmergencyPlanApproveForm(forms.Form):
+    approved_by = forms.CharField(
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        label='审批人'
+    )
+    approval_opinion = forms.CharField(
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+        required=False,
+        label='审批意见'
+    )
+
+
+class EmergencyCommandForm(forms.ModelForm):
+    class Meta:
+        model = EmergencyCommand
+        fields = ['command_type', 'priority', 'title', 'content', 'requirements',
+                  'issuer', 'assignee', 'assignee_department', 'deadline']
+        widgets = {
+            'command_type': forms.Select(attrs={'class': 'form-select'}),
+            'priority': forms.Select(attrs={'class': 'form-select'}),
+            'title': forms.TextInput(attrs={'class': 'form-control'}),
+            'content': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
+            'requirements': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'issuer': forms.TextInput(attrs={'class': 'form-control'}),
+            'assignee': forms.TextInput(attrs={'class': 'form-control'}),
+            'assignee_department': forms.TextInput(attrs={'class': 'form-control'}),
+            'deadline': forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
+        }
+
+    def __init__(self, *args, event=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['requirements'].required = False
+        self.fields['assignee_department'].required = False
+        self.fields['deadline'].required = False
+        if event and not self.initial.get('deadline'):
+            hours = 24 if event.severity in ('general', 'major') else 4
+            default_deadline = timezone.now() + timedelta(hours=hours)
+            self.initial['deadline'] = default_deadline.strftime('%Y-%m-%dT%H:%M')
+        if event and not self.initial.get('priority'):
+            if event.severity in ('severe', 'extreme'):
+                self.initial['priority'] = 'urgent'
+            elif event.severity == 'major':
+                self.initial['priority'] = 'high'
+
+    def clean_deadline(self):
+        deadline = self.cleaned_data.get('deadline')
+        if deadline and deadline < timezone.now():
+            raise ValidationError('要求完成时间不能早于当前时间')
+        return deadline
+
+
+class EmergencyCommandExecuteForm(forms.Form):
+    actual_start = forms.DateTimeField(
+        widget=forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
+        label='实际开始时间',
+        required=False
+    )
+    actual_end = forms.DateTimeField(
+        widget=forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
+        label='实际完成时间',
+        required=False
+    )
+    execution_result = forms.CharField(
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
+        label='执行结果'
+    )
+    feedback_attachments = forms.CharField(
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        required=False,
+        label='反馈附件'
+    )
+    acknowledged_by = forms.CharField(
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        label='执行人'
+    )
+
+
+class EmergencyFeedbackForm(forms.ModelForm):
+    class Meta:
+        model = EmergencyFeedback
+        fields = ['feedback_type', 'situation_assessment', 'location', 'reporter',
+                  'reporter_phone', 'content', 'measures_taken', 'needs_assistance',
+                  'assistance_details', 'temperature', 'humidity', 'pest_density',
+                  'affected_area', 'attachments', 'photos']
+        widgets = {
+            'feedback_type': forms.Select(attrs={'class': 'form-select'}),
+            'situation_assessment': forms.Select(attrs={'class': 'form-select'}),
+            'location': forms.TextInput(attrs={'class': 'form-control'}),
+            'reporter': forms.TextInput(attrs={'class': 'form-control'}),
+            'reporter_phone': forms.TextInput(attrs={'class': 'form-control'}),
+            'content': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
+            'measures_taken': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'needs_assistance': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'assistance_details': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'temperature': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1'}),
+            'humidity': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1'}),
+            'pest_density': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1'}),
+            'affected_area': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'attachments': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'photos': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['location'].required = False
+        self.fields['reporter_phone'].required = False
+        self.fields['measures_taken'].required = False
+        self.fields['assistance_details'].required = False
+        self.fields['temperature'].required = False
+        self.fields['humidity'].required = False
+        self.fields['pest_density'].required = False
+        self.fields['affected_area'].required = False
+        self.fields['attachments'].required = False
+        self.fields['photos'].required = False
+
+
+class EmergencyTaskForm(forms.ModelForm):
+    class Meta:
+        model = EmergencyTask
+        fields = ['task_type', 'title', 'description', 'priority', 'assignee',
+                  'assignee_department', 'assigner', 'start_time', 'due_time',
+                  'expected_result']
+        widgets = {
+            'task_type': forms.Select(attrs={'class': 'form-select'}),
+            'title': forms.TextInput(attrs={'class': 'form-control'}),
+            'description': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'priority': forms.Select(attrs={'class': 'form-select'}),
+            'assignee': forms.TextInput(attrs={'class': 'form-control'}),
+            'assignee_department': forms.TextInput(attrs={'class': 'form-control'}),
+            'assigner': forms.TextInput(attrs={'class': 'form-control'}),
+            'start_time': forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
+            'due_time': forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
+            'expected_result': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        }
+
+    def __init__(self, *args, event=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['assignee_department'].required = False
+        self.fields['start_time'].required = False
+        self.fields['due_time'].required = False
+        self.fields['expected_result'].required = False
+        if event and not self.initial.get('due_time'):
+            hours = 24 if event.severity in ('general', 'major') else 8
+            default_due = timezone.now() + timedelta(hours=hours)
+            self.initial['due_time'] = default_due.strftime('%Y-%m-%dT%H:%M')
+
+    def clean_due_time(self):
+        due_time = self.cleaned_data.get('due_time')
+        start_time = self.cleaned_data.get('start_time')
+        if due_time and start_time and due_time < start_time:
+            raise ValidationError('截止时间不能早于开始时间')
+        if due_time and due_time < timezone.now():
+            raise ValidationError('截止时间不能早于当前时间')
+        return due_time
+
+
+class EmergencyTaskProgressForm(forms.ModelForm):
+    class Meta:
+        model = EmergencyTask
+        fields = ['progress', 'actual_result', 'difficulties']
+        widgets = {
+            'progress': forms.NumberInput(attrs={'class': 'form-control', 'min': '0', 'max': '100'}),
+            'actual_result': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'difficulties': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['actual_result'].required = False
+        self.fields['difficulties'].required = False
+
+    def clean_progress(self):
+        progress = self.cleaned_data.get('progress')
+        if progress is not None and (progress < 0 or progress > 100):
+            raise ValidationError('进度必须在0-100之间')
+        return progress
+
+
+class EmergencyTaskCompleteForm(forms.Form):
+    actual_end = forms.DateTimeField(
+        widget=forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
+        label='实际完成时间'
+    )
+    actual_result = forms.CharField(
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
+        label='实际成果'
+    )
+    completion_remark = forms.CharField(
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        required=False,
+        label='完成备注'
+    )
+    completed_by = forms.CharField(
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        label='完成确认人'
+    )
+
+
+class EmergencyUpgradeForm(forms.ModelForm):
+    class Meta:
+        model = EmergencyUpgrade
+        fields = ['new_severity', 'reason', 'basis', 'additional_measures', 'requested_by']
+        widgets = {
+            'new_severity': forms.Select(attrs={'class': 'form-select'}),
+            'reason': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'basis': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'additional_measures': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'requested_by': forms.TextInput(attrs={'class': 'form-control'}),
+        }
+
+    def __init__(self, *args, event=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['additional_measures'].required = False
+        if event:
+            current_severity = event.severity
+            severity_order = ['general', 'major', 'severe', 'extreme']
+            current_index = severity_order.index(current_severity)
+            available_choices = [
+                (s, label) for s, label in EmergencyEvent.SEVERITY_CHOICES
+                if severity_order.index(s) > current_index
+            ]
+            self.fields['new_severity'].choices = available_choices
+
+    def clean_new_severity(self):
+        new_severity = self.cleaned_data.get('new_severity')
+        if self.instance and self.instance.event:
+            severity_order = ['general', 'major', 'severe', 'extreme']
+            if severity_order.index(new_severity) <= severity_order.index(self.instance.event.severity):
+                raise ValidationError('新的严重程度必须高于当前严重程度')
+        return new_severity
+
+
+class EmergencyUpgradeApproveForm(forms.Form):
+    approved_by = forms.CharField(
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        label='审批人'
+    )
+    approval_opinion = forms.CharField(
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+        required=False,
+        label='审批意见'
+    )
+    notified_persons = forms.CharField(
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        required=False,
+        label='已通知人员'
+    )
+
+
+class EmergencyClosureForm(forms.ModelForm):
+    class Meta:
+        model = EmergencyClosure
+        fields = ['verification_results', 'stability_assessment', 'remaining_risks',
+                  'followup_actions', 'resource_usage_summary', 'lessons_learned',
+                  'improvement_suggestions', 'requested_by']
+        widgets = {
+            'verification_results': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
+            'stability_assessment': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'remaining_risks': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'followup_actions': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'resource_usage_summary': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'lessons_learned': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'improvement_suggestions': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'requested_by': forms.TextInput(attrs={'class': 'form-control'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['remaining_risks'].required = False
+        self.fields['followup_actions'].required = False
+        self.fields['resource_usage_summary'].required = False
+        self.fields['lessons_learned'].required = False
+        self.fields['improvement_suggestions'].required = False
+
+
+class EmergencyClosureApproveForm(forms.Form):
+    verified_by = forms.CharField(
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        label='核查人'
+    )
+    approved_by = forms.CharField(
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        label='批准人'
+    )
+    total_response_duration = forms.FloatField(
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1'}),
+        label='总响应时长(小时)',
+        required=False
+    )
+    total_disposal_duration = forms.FloatField(
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1'}),
+        label='总处置时长(小时)',
+        required=False
+    )
+
+
+class AlternativeRouteForm(forms.ModelForm):
+    class Meta:
+        model = AlternativeRoute
+        fields = ['alternative_route', 'route_description', 'waypoints', 'distance_km',
+                  'estimated_hours', 'cost_per_ton', 'transport_type', 'risk_assessment',
+                  'source_granary', 'target_granary']
+        widgets = {
+            'alternative_route': forms.Select(attrs={'class': 'form-select'}),
+            'route_description': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'waypoints': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'distance_km': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1'}),
+            'estimated_hours': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1'}),
+            'cost_per_ton': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'transport_type': forms.Select(attrs={'class': 'form-select'}),
+            'risk_assessment': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'source_granary': forms.Select(attrs={'class': 'form-select'}),
+            'target_granary': forms.Select(attrs={'class': 'form-select'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['alternative_route'].required = False
+        self.fields['alternative_route'].queryset = TransportRoute.objects.filter(is_active=True)
+        self.fields['alternative_route'].empty_label = '自定义路线'
+        self.fields['waypoints'].required = False
+        self.fields['risk_assessment'].required = False
+        self.fields['source_granary'].queryset = Granary.objects.filter(is_active=True)
+        self.fields['target_granary'].queryset = Granary.objects.filter(is_active=True)
+
+
+class ImpactAnalysisForm(forms.Form):
+    analyze_granaries = forms.BooleanField(
+        required=False,
+        initial=True,
+        label='分析受影响粮仓',
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
+    )
+    analyze_batches = forms.BooleanField(
+        required=False,
+        initial=True,
+        label='分析受影响批次',
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
+    )
+    analyze_routes = forms.BooleanField(
+        required=False,
+        initial=True,
+        label='分析受影响路径',
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
+    )
+    analyze_executions = forms.BooleanField(
+        required=False,
+        initial=True,
+        label='分析受影响在途任务',
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
+    )
+    impact_radius_km = forms.FloatField(
+        required=False,
+        initial=50.0,
+        min_value=0,
+        label='影响半径(公里)',
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'step': '1'})
+    )

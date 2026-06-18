@@ -1,0 +1,91 @@
+{% extends 'base.html' %}
+{% block title %}提交反馈 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-chat-left-text-fill me-2"></i>提交反馈</h3>
+    <div>
+        {% if task %}
+        <a href="{% url 'emergency_task_detail' task.pk %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回任务详情</a>
+        {% else %}
+        <a href="{% url 'emergency_task_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回任务列表</a>
+        {% endif %}
+    </div>
+</div>
+
+{% if task %}
+<div class="card stat-card mb-4">
+    <div class="card-body">
+        <h5 class="card-title mb-3"><i class="bi bi-info-circle me-2 text-primary"></i>关联任务信息</h5>
+        <div class="row">
+            <div class="col-md-3">
+                <span class="text-muted small">任务编号：</span>
+                <span class="fw-bold">{{ task.task_code }}</span>
+            </div>
+            <div class="col-md-3">
+                <span class="text-muted small">优先级：</span>
+                <span class="risk-badge priority-{{ task.priority }}">{{ task.get_priority_display }}</span>
+            </div>
+            <div class="col-md-6">
+                <span class="text-muted small">任务标题：</span>
+                <span>{{ task.title }}</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="card stat-card">
+    <div class="card-body">
+        <form method="post" novalidate>
+            {% csrf_token %}
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">反馈类型 <span class="text-danger">*</span></label>
+                    {{ form.feedback_type }}
+                    {% if form.feedback_type.errors %}
+                    <div class="text-danger small mt-1">{{ form.feedback_type.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">反馈人 <span class="text-danger">*</span></label>
+                    {{ form.reporter }}
+                    {% if form.reporter.errors %}
+                    <div class="text-danger small mt-1">{{ form.reporter.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">反馈内容 <span class="text-danger">*</span></label>
+                    {{ form.content }}
+                    {% if form.content.errors %}
+                    <div class="text-danger small mt-1">{{ form.content.errors }}</div>
+                    {% endif %}
+                    <div class="form-text">请详细描述反馈内容，包括当前进展、遇到的问题、需要的支持等</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">当前进度(%)</label>
+                    {{ form.current_progress }}
+                    {% if form.current_progress.errors %}
+                    <div class="text-danger small mt-1">{{ form.current_progress.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">附件说明</label>
+                    {{ form.attachment }}
+                    {% if form.attachment.errors %}
+                    <div class="text-danger small mt-1">{{ form.attachment.errors }}</div>
+                    {% endif %}
+                    <div class="form-text">如有相关照片、文档等，请在此说明</div>
+                </div>
+            </div>
+            <div class="mt-4 d-flex justify-content-end">
+                {% if task %}
+                <a href="{% url 'emergency_task_detail' task.pk %}" class="btn btn-outline-secondary me-2">取消</a>
+                {% else %}
+                <a href="{% url 'emergency_task_list' %}" class="btn btn-outline-secondary me-2">取消</a>
+                {% endif %}
+                <button type="submit" class="btn btn-success"><i class="bi bi-send me-1"></i>提交反馈</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

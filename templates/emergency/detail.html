@@ -1,0 +1,277 @@
+{% extends 'base.html' %}
+{% block title %}事件详情 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-exclamation-triangle-fill me-2"></i>事件详情</h3>
+    <div>
+        <a href="{% url 'emergency_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回列表</a>
+        {% if event.status == 'reporting' or event.status == 'pending' %}
+        <a href="{% url 'emergency_analyze' event.pk %}" class="btn btn-info ms-2"><i class="bi bi-diagram-3 me-1"></i>联动分析</a>
+        {% endif %}
+        {% if event.status == 'pending' or event.status == 'processing' %}
+        <a href="{% url 'emergency_command_create' event.pk %}" class="btn btn-warning ms-2"><i class="bi bi-megaphone me-1"></i>下发指令</a>
+        {% endif %}
+        {% if event.status == 'processing' %}
+        <a href="{% url 'emergency_upgrade' event.pk %}" class="btn btn-danger ms-2"><i class="bi bi-arrow-up-circle me-1"></i>申请升级</a>
+        {% endif %}
+        {% if event.status == 'processing' %}
+        <a href="{% url 'emergency_closure' event.pk %}" class="btn btn-success ms-2"><i class="bi bi-check-circle me-1"></i>申请解除</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6 mb-4">
+        <div class="card stat-card">
+            <div class="card-body">
+                <h5 class="card-title mb-3"><i class="bi bi-info-circle me-2 text-primary"></i>事件基本信息</h5>
+                <table class="table table-borderless mb-0">
+                    <tr><th style="width: 140px;" class="text-muted">事件编号</th><td class="fw-bold">{{ event.event_code }}</td></tr>
+                    <tr><th class="text-muted">事件标题</th><td>{{ event.title }}</td></tr>
+                    <tr><th class="text-muted">事件类型</th><td>{{ event.get_event_type_display }}</td></tr>
+                    <tr><th class="text-muted">事件等级</th><td><span class="risk-badge warn-{{ event.level }}">{{ event.get_level_display }}</span></td></tr>
+                    <tr><th class="text-muted">发生时间</th><td>{{ event.happen_time|date:'Y-m-d H:i:s' }}</td></tr>
+                    <tr><th class="text-muted">上报时间</th><td>{{ event.report_time|date:'Y-m-d H:i:s' }}</td></tr>
+                    <tr><th class="text-muted">发生位置</th><td>{{ event.location|default:'-' }}</td></tr>
+                    <tr><th class="text-muted">上报人</th><td>{{ event.reporter }}</td></tr>
+                    <tr><th class="text-muted">影响人数</th><td>{{ event.affected_people|default:'0' }} 人</td></tr>
+                    <tr><th class="text-muted">预估损失</th><td>{{ event.estimated_loss|default:'0' }} 万元</td></tr>
+                    <tr><th class="text-muted">当前状态</th><td><span class="risk-badge status-{{ event.status }}">{{ event.get_status_display }}</span></td></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6 mb-4">
+        <div class="card stat-card">
+            <div class="card-body">
+                <h5 class="card-title mb-3"><i class="bi bi-text-paragraph me-2 text-primary"></i>事件描述</h5>
+                <div class="mb-3">
+                    <h6 class="small text-muted mb-1">事件详情</h6>
+                    <p class="mb-3">{{ event.description|linebreaks }}</p>
+                </div>
+                {% if event.measures_taken %}
+                <div class="mb-3">
+                    <h6 class="small text-muted mb-1">已采取措施</h6>
+                    <p class="mb-3">{{ event.measures_taken|linebreaks }}</p>
+                </div>
+                {% endif %}
+                {% if event.support_needed %}
+                <div class="mb-3">
+                    <h6 class="small text-muted mb-1">需要的支援</h6>
+                    <p class="mb-0">{{ event.support_needed|linebreaks }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card stat-card mb-4">
+    <div class="card-header bg-white border-bottom">
+        <h5 class="mb-0"><i class="bi bi-geo-alt-fill me-2 text-primary"></i>影响分析</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3 mb-3">
+                <div class="card border-0 bg-light">
+                    <div class="card-body text-center">
+                        <i class="bi bi-building display-4 text-primary mb-2"></i>
+                        <div class="fs-4 fw-bold">{{ impact_analysis.affected_granaries|length }}</div>
+                        <div class="small text-muted">受影响粮仓</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card border-0 bg-light">
+                    <div class="card-body text-center">
+                        <i class="bi bi-box-seam display-4 text-warning mb-2"></i>
+                        <div class="fs-4 fw-bold">{{ impact_analysis.affected_batches|length }}</div>
+                        <div class="small text-muted">受影响批次</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card border-0 bg-light">
+                    <div class="card-body text-center">
+                        <i class="bi bi-signpost-split display-4 text-info mb-2"></i>
+                        <div class="fs-4 fw-bold">{{ impact_analysis.affected_routes|length }}</div>
+                        <div class="small text-muted">受影响路线</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card border-0 bg-light">
+                    <div class="card-body text-center">
+                        <i class="bi bi-truck display-4 text-success mb-2"></i>
+                        <div class="fs-4 fw-bold">{{ impact_analysis.affected_tasks|length }}</div>
+                        <div class="small text-muted">在途任务</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% if impact_analysis.summary %}
+        <div class="alert alert-info mb-0">
+            <i class="bi bi-info-circle me-2"></i>{{ impact_analysis.summary }}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card stat-card mb-4">
+    <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-file-earmark-text me-2 text-primary"></i>处置方案</h5>
+        <a href="{% url 'emergency_plan_create' event.pk %}" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>创建方案</a>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>方案名称</th>
+                    <th>创建时间</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for plan in plans %}
+                <tr>
+                    <td>{{ plan.name }}</td>
+                    <td class="small">{{ plan.created_time|date:'Y-m-d H:i' }}</td>
+                    <td><span class="risk-badge status-{{ plan.status }}">{{ plan.get_status_display }}</span></td>
+                    <td>
+                        <a href="{% url 'emergency_plan_detail' plan.pk %}" class="btn btn-sm btn-outline-primary">详情</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4" class="text-center text-muted py-3">暂无处置方案</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card stat-card mb-4">
+    <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-megaphone-fill me-2 text-primary"></i>指挥指令</h5>
+        {% if event.status == 'pending' or event.status == 'processing' %}
+        <a href="{% url 'emergency_command_create' event.pk %}" class="btn btn-sm btn-warning"><i class="bi bi-plus-lg me-1"></i>下发指令</a>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>下发时间</th>
+                    <th>指令内容</th>
+                    <th>接收人</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for cmd in commands %}
+                <tr>
+                    <td class="small">{{ cmd.issue_time|date:'Y-m-d H:i' }}</td>
+                    <td class="small" style="max-width: 300px;">{{ cmd.content|truncatechars:50 }}</td>
+                    <td class="small">{{ cmd.receiver }}</td>
+                    <td><span class="risk-badge status-{{ cmd.status }}">{{ cmd.get_status_display }}</span></td>
+                    <td>
+                        <a href="{% url 'emergency_command_detail' cmd.pk %}" class="btn btn-sm btn-outline-primary">详情</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" class="text-center text-muted py-3">暂无指挥指令</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card stat-card mb-4">
+    <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-list-check me-2 text-primary"></i>任务列表</h5>
+        {% if event.status == 'pending' or event.status == 'processing' %}
+        <a href="{% url 'emergency_task_create' event.pk %}" class="btn btn-sm btn-success"><i class="bi bi-plus-lg me-1"></i>分派任务</a>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>任务标题</th>
+                    <th>负责人</th>
+                    <th>优先级</th>
+                    <th>状态</th>
+                    <th>进度</th>
+                    <th>截止时间</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for task in tasks %}
+                <tr>
+                    <td class="small" style="max-width: 200px;">{{ task.title|truncatechars:30 }}</td>
+                    <td class="small">{{ task.assignee }}</td>
+                    <td><span class="risk-badge priority-{{ task.priority }}">{{ task.get_priority_display }}</span></td>
+                    <td><span class="risk-badge task-{{ task.status }}">{{ task.get_status_display }}</span></td>
+                    <td style="width: 120px;">
+                        <div class="progress" style="height: 6px;">
+                            <div class="progress-bar {% if task.progress >= 80 %}bg-success{% elif task.progress >= 50 %}bg-info{% else %}bg-warning{% endif %}" style="width: {{ task.progress }}%"></div>
+                        </div>
+                        <small class="text-muted">{{ task.progress }}%</small>
+                    </td>
+                    <td class="small">{{ task.deadline|date:'m-d H:i' }}</td>
+                    <td>
+                        <a href="{% url 'emergency_task_detail' task.pk %}" class="btn btn-sm btn-outline-primary">详情</a>
+                        {% if task.status in 'assigned,in_progress' %}
+                        <a href="{% url 'emergency_feedback_create' task.pk %}" class="btn btn-sm btn-outline-success">反馈</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-center text-muted py-3">暂无处置任务</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card stat-card">
+    <div class="card-header bg-white border-bottom">
+        <h5 class="mb-0"><i class="bi bi-chat-left-text-fill me-2 text-primary"></i>反馈记录</h5>
+    </div>
+    <div class="card-body p-0">
+        <div style="max-height: 400px; overflow-y: auto;">
+            {% for fb in feedbacks %}
+            <div class="list-group-item">
+                <div class="d-flex w-100 justify-content-between align-items-start mb-2">
+                    <div>
+                        <strong>{{ fb.task.title }}</strong>
+                        <span class="risk-badge task-{{ fb.task.status }} ms-2">{{ fb.task.get_status_display }}</span>
+                    </div>
+                    <small class="text-muted">{{ fb.report_time|date:'Y-m-d H:i' }}</small>
+                </div>
+                <p class="mb-1">{{ fb.content|linebreaks }}</p>
+                <div class="small text-muted">
+                    <i class="bi bi-person me-1"></i>{{ fb.reporter }}
+                    {% if fb.attachment %}
+                    <span class="ms-3"><i class="bi bi-paperclip me-1"></i>{{ fb.attachment }}</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% empty %}
+            <div class="text-center text-muted py-4">
+                <p class="mb-0">暂无反馈记录</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

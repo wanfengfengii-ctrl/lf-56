@@ -1,0 +1,102 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }} - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-megaphone-fill me-2"></i>{{ title }}</h3>
+    <div>
+        {% if event %}
+        <a href="{% url 'emergency_detail' event.pk %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回事件详情</a>
+        {% elif command %}
+        <a href="{% url 'emergency_command_detail' command.pk %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回指令详情</a>
+        {% else %}
+        <a href="{% url 'emergency_command_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回指令列表</a>
+        {% endif %}
+    </div>
+</div>
+
+{% if event %}
+<div class="card stat-card mb-4">
+    <div class="card-body">
+        <h5 class="card-title mb-3"><i class="bi bi-info-circle me-2 text-primary"></i>关联事件信息</h5>
+        <div class="row">
+            <div class="col-md-3">
+                <span class="text-muted small">事件编号：</span>
+                <span class="fw-bold">{{ event.event_code }}</span>
+            </div>
+            <div class="col-md-3">
+                <span class="text-muted small">事件等级：</span>
+                <span class="risk-badge warn-{{ event.level }}">{{ event.get_level_display }}</span>
+            </div>
+            <div class="col-md-6">
+                <span class="text-muted small">事件标题：</span>
+                <span>{{ event.title }}</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="card stat-card">
+    <div class="card-body">
+        <form method="post" novalidate>
+            {% csrf_token %}
+            <div class="row g-3">
+                <div class="col-md-12">
+                    <label class="form-label">指令内容 <span class="text-danger">*</span></label>
+                    {{ form.content }}
+                    {% if form.content.errors %}
+                    <div class="text-danger small mt-1">{{ form.content.errors }}</div>
+                    {% endif %}
+                    <div class="form-text">请清晰、具体地描述指令内容和要求</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">接收人 <span class="text-danger">*</span></label>
+                    {{ form.receiver }}
+                    {% if form.receiver.errors %}
+                    <div class="text-danger small mt-1">{{ form.receiver.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">下发人</label>
+                    {{ form.issuer }}
+                    {% if form.issuer.errors %}
+                    <div class="text-danger small mt-1">{{ form.issuer.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">优先级</label>
+                    {{ form.priority }}
+                    {% if form.priority.errors %}
+                    <div class="text-danger small mt-1">{{ form.priority.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">要求完成时间</label>
+                    {{ form.deadline }}
+                    {% if form.deadline.errors %}
+                    <div class="text-danger small mt-1">{{ form.deadline.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">附件说明</label>
+                    {{ form.attachment }}
+                    {% if form.attachment.errors %}
+                    <div class="text-danger small mt-1">{{ form.attachment.errors }}</div>
+                    {% endif %}
+                    <div class="form-text">如有相关文件、图片等，请在此说明</div>
+                </div>
+            </div>
+            <div class="mt-4 d-flex justify-content-end">
+                {% if event %}
+                <a href="{% url 'emergency_detail' event.pk %}" class="btn btn-outline-secondary me-2">取消</a>
+                {% elif command %}
+                <a href="{% url 'emergency_command_detail' command.pk %}" class="btn btn-outline-secondary me-2">取消</a>
+                {% else %}
+                <a href="{% url 'emergency_command_list' %}" class="btn btn-outline-secondary me-2">取消</a>
+                {% endif %}
+                <button type="submit" class="btn btn-warning"><i class="bi bi-send me-1"></i>下发指令</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

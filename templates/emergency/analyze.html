@@ -1,0 +1,222 @@
+{% extends 'base.html' %}
+{% block title %}联动分析结果 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-diagram-3 me-2"></i>联动分析结果</h3>
+    <div>
+        <a href="{% url 'emergency_detail' event.pk %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回事件详情</a>
+        <a href="{% url 'emergency_alternative_routes' event.pk %}" class="btn btn-info ms-2"><i class="bi bi-signpost-split me-1"></i>查看替代路线</a>
+    </div>
+</div>
+
+<div class="alert alert-info mb-4">
+    <div class="d-flex align-items-center">
+        <i class="bi bi-info-circle-fill fs-4 me-3"></i>
+        <div>
+            <h5 class="alert-heading mb-1">分析概览</h5>
+            <p class="mb-0">基于事件"{{ event.title }}"的联动分析已完成，共识别到以下受影响对象，请根据分析结果制定处置方案。</p>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">受影响粮仓</div>
+                    <div class="fs-2 fw-bold text-primary">{{ analysis.affected_granaries|length }}</div>
+                </div>
+                <i class="bi bi-building stat-icon text-primary"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">受影响批次</div>
+                    <div class="fs-2 fw-bold text-warning">{{ analysis.affected_batches|length }}</div>
+                </div>
+                <i class="bi bi-box-seam stat-icon text-warning"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">受影响路线</div>
+                    <div class="fs-2 fw-bold text-info">{{ analysis.affected_routes|length }}</div>
+                </div>
+                <i class="bi bi-signpost-split stat-icon text-info"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">在途任务</div>
+                    <div class="fs-2 fw-bold text-success">{{ analysis.affected_tasks|length }}</div>
+                </div>
+                <i class="bi bi-truck stat-icon text-success"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card stat-card mb-4">
+    <div class="card-header bg-white border-bottom">
+        <h5 class="mb-0"><i class="bi bi-building me-2 text-primary"></i>受影响的粮仓</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>粮仓编号</th>
+                    <th>粮仓名称</th>
+                    <th>所在区域</th>
+                    <th>容量</th>
+                    <th>当前库存</th>
+                    <th>影响程度</th>
+                    <th>风险等级</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for g in analysis.affected_granaries %}
+                <tr>
+                    <td><a href="{% url 'granary_detail' g.id %}">{{ g.code }}</a></td>
+                    <td>{{ g.name }}</td>
+                    <td>{{ g.region|default:'-' }}</td>
+                    <td>{{ g.capacity|floatformat:0 }} 吨</td>
+                    <td>{{ g.current_stock|floatformat:0 }} 吨</td>
+                    <td><span class="risk-badge {% if g.impact_level == 'high' %}warn-level1{% elif g.impact_level == 'medium' %}warn-level2{% else %}warn-level3{% endif %}">{{ g.get_impact_level_display }}</span></td>
+                    <td><span class="risk-badge warn-{{ g.risk_level }}">{{ g.get_risk_level_display }}</span></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-center text-muted py-3">暂无受影响粮仓</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card stat-card mb-4">
+    <div class="card-header bg-white border-bottom">
+        <h5 class="mb-0"><i class="bi bi-box-seam me-2 text-primary"></i>受影响的批次</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>批次编号</th>
+                    <th>粮食品种</th>
+                    <th>所属粮仓</th>
+                    <th>数量</th>
+                    <th>入库时间</th>
+                    <th>质量等级</th>
+                    <th>预计损失</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for b in analysis.affected_batches %}
+                <tr>
+                    <td><a href="{% url 'batch_detail' b.id %}">{{ b.batch_no }}</a></td>
+                    <td>{{ b.grain_type.name }}</td>
+                    <td>{{ b.granary.code }} - {{ b.granary.name }}</td>
+                    <td>{{ b.quantity|floatformat:0 }} 吨</td>
+                    <td class="small">{{ b.inbound_time|date:'Y-m-d' }}</td>
+                    <td>{{ b.quality_level|default:'-' }}</td>
+                    <td class="text-danger">{{ b.estimated_loss|floatformat:0 }} 吨</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-center text-muted py-3">暂无受影响批次</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card stat-card mb-4">
+    <div class="card-header bg-white border-bottom">
+        <h5 class="mb-0"><i class="bi bi-signpost-split me-2 text-primary"></i>受影响的运输路线</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>路线名称</th>
+                    <th>起点</th>
+                    <th>终点</th>
+                    <th>距离</th>
+                    <th>预计时长</th>
+                    <th>路况状态</th>
+                    <th>影响说明</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for r in analysis.affected_routes %}
+                <tr>
+                    <td>{{ r.name }}</td>
+                    <td>{{ r.start_point }}</td>
+                    <td>{{ r.end_point }}</td>
+                    <td>{{ r.distance }} 公里</td>
+                    <td>{{ r.estimated_time }} 小时</td>
+                    <td><span class="risk-badge status-{{ r.traffic_status }}">{{ r.get_traffic_status_display }}</span></td>
+                    <td class="small">{{ r.impact_description|default:'路线可能受事件影响' }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-center text-muted py-3">暂无受影响路线</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card stat-card">
+    <div class="card-header bg-white border-bottom">
+        <h5 class="mb-0"><i class="bi bi-truck me-2 text-primary"></i>在途运输任务</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>任务编号</th>
+                    <th>运输批次</th>
+                    <th>运输路线</th>
+                    <th>当前位置</th>
+                    <th>预计到达</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for t in analysis.affected_tasks %}
+                <tr>
+                    <td>{{ t.task_code }}</td>
+                    <td>{{ t.batch.batch_no }}</td>
+                    <td>{{ t.route.name|default:'-' }}</td>
+                    <td class="small">{{ t.current_location|default:'运输中' }}</td>
+                    <td class="small">{{ t.estimated_arrival|date:'m-d H:i' }}</td>
+                    <td><span class="risk-badge task-{{ t.status }}">{{ t.get_status_display }}</span></td>
+                    <td>
+                        <a href="{% url 'emergency_alternative_routes' event.pk %}" class="btn btn-sm btn-outline-info">改道建议</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-center text-muted py-3">暂无在途任务</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

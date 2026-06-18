@@ -151,4 +151,64 @@ urlpatterns = [
     path('api/region-collaboration/', views.api_region_collaboration, name='api_region_collaboration'),
     path('api/route-efficiency/', views.api_route_efficiency, name='api_route_efficiency'),
     path('api/loss-by-type/', views.api_loss_by_type, name='api_loss_by_type'),
+
+    # Emergency API endpoints
+    path('api/emergency-response-time/', views.api_emergency_response_time, name='api_emergency_response_time'),
+    path('api/emergency-completion-rate/', views.api_emergency_completion_rate, name='api_emergency_completion_rate'),
+    path('api/emergency-impact-scope/', views.api_emergency_impact_scope, name='api_emergency_impact_scope'),
+    path('api/emergency-collaboration/', views.api_emergency_collaboration, name='api_emergency_collaboration'),
+
+    # Emergency dashboard
+    path('emergency/dashboard/', views.emergency_dashboard, name='emergency_dashboard'),
+
+    # Emergency event views
+    path('emergency/events/', views.emergency_list, name='emergency_list'),
+    path('emergency/events/create/', views.emergency_create, name='emergency_create'),
+    path('emergency/events/<int:pk>/', views.emergency_detail, name='emergency_detail'),
+    path('emergency/events/<int:pk>/analyze/', views.emergency_analyze, name='emergency_analyze'),
+
+    # Emergency plan views
+    path('emergency/plans/', views.emergency_plan_list, name='emergency_plan_list'),
+    path('emergency/events/<int:event_pk>/plans/create/', views.emergency_plan_create, name='emergency_plan_create'),
+    path('emergency/plans/<int:pk>/', views.emergency_plan_detail, name='emergency_plan_detail'),
+    path('emergency/plans/<int:pk>/approve/', views.emergency_plan_approve, name='emergency_plan_approve'),
+    path('emergency/plans/<int:pk>/reject/', views.emergency_plan_reject, name='emergency_plan_reject'),
+    path('emergency/plans/<int:pk>/execute/', views.emergency_plan_execute, name='emergency_plan_execute'),
+    path('emergency/plans/<int:pk>/complete/', views.emergency_plan_complete, name='emergency_plan_complete'),
+
+    # Alternative route views
+    path('emergency/plans/<int:plan_pk>/routes/', views.alternative_route_list, name='alternative_route_list'),
+    path('emergency/plans/<int:plan_pk>/routes/generate/', views.alternative_route_generate, name='alternative_route_generate'),
+    path('emergency/routes/<int:pk>/select/', views.alternative_route_select, name='alternative_route_select'),
+
+    # Emergency command views
+    path('emergency/commands/', views.command_list, name='command_list'),
+    path('emergency/events/<int:event_pk>/commands/create/', views.command_create, name='command_create'),
+    path('emergency/commands/<int:pk>/', views.command_detail, name='command_detail'),
+    path('emergency/commands/<int:pk>/acknowledge/', views.command_acknowledge, name='command_acknowledge'),
+    path('emergency/commands/<int:pk>/execute/', views.command_execute, name='command_execute'),
+    path('emergency/commands/<int:pk>/complete/', views.command_complete, name='command_complete'),
+
+    # Emergency task views
+    path('emergency/tasks/', views.task_list, name='emergency_task_list'),
+    path('emergency/events/<int:event_pk>/tasks/create/', views.task_create, name='task_create'),
+    path('emergency/tasks/<int:pk>/', views.task_detail, name='task_detail'),
+    path('emergency/tasks/<int:pk>/accept/', views.task_accept, name='task_accept'),
+    path('emergency/tasks/<int:pk>/start/', views.task_start, name='task_start'),
+    path('emergency/tasks/<int:pk>/update-progress/', views.task_update_progress, name='task_update_progress'),
+    path('emergency/tasks/<int:pk>/complete/', views.task_complete, name='task_complete'),
+
+    # Emergency feedback views
+    path('emergency/events/<int:event_pk>/feedbacks/create/', views.feedback_create, name='feedback_create'),
+
+    # Emergency upgrade views
+    path('emergency/events/<int:pk>/upgrade/', views.emergency_upgrade, name='emergency_upgrade'),
+    path('emergency/upgrades/<int:pk>/approve/', views.emergency_upgrade_approve, name='emergency_upgrade_approve'),
+
+    # Emergency closure views
+    path('emergency/events/<int:pk>/closure/', views.emergency_closure, name='emergency_closure'),
+    path('emergency/closures/<int:pk>/approve/', views.emergency_closure_approve, name='emergency_closure_approve'),
+
+    # Emergency analysis views
+    path('emergency/analysis/', views.emergency_analysis, name='emergency_analysis'),
 ]

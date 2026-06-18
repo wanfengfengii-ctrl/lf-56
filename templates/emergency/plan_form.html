@@ -1,0 +1,130 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }} - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-file-earmark-text me-2"></i>{{ title }}</h3>
+    <div>
+        {% if event %}
+        <a href="{% url 'emergency_detail' event.pk %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回事件详情</a>
+        {% elif plan %}
+        <a href="{% url 'emergency_plan_detail' plan.pk %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回方案详情</a>
+        {% else %}
+        <a href="{% url 'emergency_plan_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回方案列表</a>
+        {% endif %}
+    </div>
+</div>
+
+{% if event %}
+<div class="card stat-card mb-4">
+    <div class="card-body">
+        <h5 class="card-title mb-3"><i class="bi bi-info-circle me-2 text-primary"></i>关联事件信息</h5>
+        <div class="row">
+            <div class="col-md-3">
+                <span class="text-muted small">事件编号：</span>
+                <span class="fw-bold">{{ event.event_code }}</span>
+            </div>
+            <div class="col-md-3">
+                <span class="text-muted small">事件等级：</span>
+                <span class="risk-badge warn-{{ event.level }}">{{ event.get_level_display }}</span>
+            </div>
+            <div class="col-md-6">
+                <span class="text-muted small">事件标题：</span>
+                <span>{{ event.title }}</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="card stat-card">
+    <div class="card-body">
+        <form method="post" novalidate>
+            {% csrf_token %}
+            <div class="row g-3">
+                <div class="col-md-12">
+                    <label class="form-label">方案名称 <span class="text-danger">*</span></label>
+                    {{ form.name }}
+                    {% if form.name.errors %}
+                    <div class="text-danger small mt-1">{{ form.name.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">方案类型 <span class="text-danger">*</span></label>
+                    {{ form.plan_type }}
+                    {% if form.plan_type.errors %}
+                    <div class="text-danger small mt-1">{{ form.plan_type.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">优先级</label>
+                    {{ form.priority }}
+                    {% if form.priority.errors %}
+                    <div class="text-danger small mt-1">{{ form.priority.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">创建人</label>
+                    {{ form.creator }}
+                    {% if form.creator.errors %}
+                    <div class="text-danger small mt-1">{{ form.creator.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">预计完成时间</label>
+                    {{ form.expected_completion }}
+                    {% if form.expected_completion.errors %}
+                    <div class="text-danger small mt-1">{{ form.expected_completion.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">方案概述 <span class="text-danger">*</span></label>
+                    {{ form.summary }}
+                    {% if form.summary.errors %}
+                    <div class="text-danger small mt-1">{{ form.summary.errors }}</div>
+                    {% endif %}
+                    <div class="form-text">请简要描述方案的总体思路和目标</div>
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">处置步骤</label>
+                    {{ form.steps }}
+                    {% if form.steps.errors %}
+                    <div class="text-danger small mt-1">{{ form.steps.errors }}</div>
+                    {% endif %}
+                    <div class="form-text">请分步骤描述具体的处置措施，可使用编号列表</div>
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">资源需求</label>
+                    {{ form.resources }}
+                    {% if form.resources.errors %}
+                    <div class="text-danger small mt-1">{{ form.resources.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">人员分工</label>
+                    {{ form.personnel }}
+                    {% if form.personnel.errors %}
+                    <div class="text-danger small mt-1">{{ form.personnel.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">注意事项</label>
+                    {{ form.notes }}
+                    {% if form.notes.errors %}
+                    <div class="text-danger small mt-1">{{ form.notes.errors }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="mt-4 d-flex justify-content-end">
+                {% if event %}
+                <a href="{% url 'emergency_detail' event.pk %}" class="btn btn-outline-secondary me-2">取消</a>
+                {% elif plan %}
+                <a href="{% url 'emergency_plan_detail' plan.pk %}" class="btn btn-outline-secondary me-2">取消</a>
+                {% else %}
+                <a href="{% url 'emergency_plan_list' %}" class="btn btn-outline-secondary me-2">取消</a>
+                {% endif %}
+                <button type="submit" class="btn btn-primary"><i class="bi bi-save me-1"></i>保存方案</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

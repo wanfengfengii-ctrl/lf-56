@@ -1,0 +1,206 @@
+{% extends 'base.html' %}
+{% block title %}指挥指令列表 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-megaphone-fill me-2"></i>指挥指令管理</h3>
+    <div>
+        {% if event %}
+        <a href="{% url 'emergency_detail' event.pk %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回事件详情</a>
+        {% else %}
+        <a href="{% url 'emergency_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回事件列表</a>
+        {% endif %}
+        <a href="{% url 'emergency_command_create' %}" class="btn btn-warning ms-2"><i class="bi bi-plus-lg me-1"></i>下发指令</a>
+    </div>
+</div>
+
+<div class="card stat-card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small text-muted">指令状态</label>
+                {{ filter_form.status }}
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted">优先级</label>
+                {{ filter_form.priority }}
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted">接收人</label>
+                {{ filter_form.receiver }}
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-primary btn-sm w-100"><i class="bi bi-funnel me-1"></i>筛选</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">指令总数</div>
+                    <div class="fs-2 fw-bold text-primary">{{ stats.total }}</div>
+                </div>
+                <i class="bi bi-megaphone stat-icon text-primary"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">待响应</div>
+                    <div class="fs-2 fw-bold text-warning">{{ stats.pending }}</div>
+                </div>
+                <i class="bi bi-clock-fill stat-icon text-warning"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">执行中</div>
+                    <div class="fs-2 fw-bold text-info">{{ stats.in_progress }}</div>
+                </div>
+                <i class="bi bi-hourglass-split stat-icon text-info"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">已完成</div>
+                    <div class="fs-2 fw-bold text-success">{{ stats.completed }}</div>
+                </div>
+                <i class="bi bi-check-circle-fill stat-icon text-success"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card stat-card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>指令编号</th>
+                    <th>关联事件</th>
+                    <th>指令内容</th>
+                    <th>下发人</th>
+                    <th>接收人</th>
+                    <th>优先级</th>
+                    <th>下发时间</th>
+                    <th>要求完成</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for cmd in commands %}
+                <tr>
+                    <td class="small fw-bold">{{ cmd.command_code }}</td>
+                    <td class="small">
+                        {% if cmd.event %}
+                        <a href="{% url 'emergency_detail' cmd.event.pk %}">{{ cmd.event.title|truncatechars:15 }}</a>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td class="small" style="max-width: 250px;">{{ cmd.content|truncatechars:40 }}</td>
+                    <td class="small">{{ cmd.issuer|default:'-' }}</td>
+                    <td class="small">{{ cmd.receiver }}</td>
+                    <td><span class="risk-badge priority-{{ cmd.priority }}">{{ cmd.get_priority_display }}</span></td>
+                    <td class="small">{{ cmd.issue_time|date:'m-d H:i' }}</td>
+                    <td class="small">
+                        {% if cmd.deadline %}
+                        <span class="{% if cmd.is_overdue and cmd.status != 'completed' %}text-danger fw-bold{% endif %}">
+                            {{ cmd.deadline|date:'m-d H:i' }}
+                            {% if cmd.is_overdue and cmd.status != 'completed' %}
+                            <span class="badge bg-danger ms-1">超时</span>
+                            {% endif %}
+                        </span>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td><span class="risk-badge status-{{ cmd.status }}">{{ cmd.get_status_display }}</span></td>
+                    <td>
+                        <a href="{% url 'emergency_command_detail' cmd.pk %}" class="btn btn-sm btn-outline-primary">详情</a>
+                        {% if cmd.status == 'pending' %}
+                        <button class="btn btn-sm btn-outline-success" onclick="acknowledge('{{ cmd.pk }}')">确认</button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="10" class="text-center text-muted py-4">暂无指挥指令</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% if is_paginated %}
+    <div class="card-footer bg-white border-top">
+        <nav>
+            <ul class="pagination pagination-sm mb-0 justify-content-center">
+                {% if page_obj.has_previous %}
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{{ query_string }}">上一页</a></li>
+                {% endif %}
+                {% for p in page_obj.paginator.page_range %}
+                {% if p == page_obj.number %}
+                <li class="page-item active"><span class="page-link">{{ p }}</span></li>
+                {% else %}
+                <li class="page-item"><a class="page-link" href="?page={{ p }}{{ query_string }}">{{ p }}</a></li>
+                {% endif %}
+                {% endfor %}
+                {% if page_obj.has_next %}
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{{ query_string }}">下一页</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
+</div>
+
+<div class="modal fade" id="acknowledgeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">确认接收指令</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" id="acknowledgeForm">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">确认人 <span class="text-danger">*</span></label>
+                        <input type="text" name="operator" class="form-control" required>
+                    </div>
+                    <div class="alert alert-info mb-0">
+                        <i class="bi bi-info-circle me-2"></i>确认接收后，指令状态将变更为"执行中"，请按照指令要求执行。
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-success">确认接收</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function acknowledge(cmdId) {
+    const form = document.getElementById('acknowledgeForm');
+    form.action = '/emergency/command/' + cmdId + '/acknowledge/';
+    const modal = new bootstrap.Modal(document.getElementById('acknowledgeModal'));
+    modal.show();
+}
+</script>
+{% endblock %}

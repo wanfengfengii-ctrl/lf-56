@@ -1,0 +1,145 @@
+{% extends 'base.html' %}
+{% block title %}任务详情 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-list-check me-2"></i>应急任务详情</h3>
+    <div>
+        <a href="{% url 'emergency_task_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回列表</a>
+        {% if task.event %}
+        <a href="{% url 'emergency_detail' task.event.pk %}" class="btn btn-outline-info ms-2"><i class="bi bi-exclamation-triangle me-1"></i>关联事件</a>
+        {% endif %}
+        {% if task.status in 'assigned,in_progress' %}
+        <a href="{% url 'emergency_feedback_create' task.pk %}" class="btn btn-success ms-2"><i class="bi bi-chat-left-text me-1"></i>提交反馈</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-8 mb-4">
+        <div class="card stat-card">
+            <div class="card-body">
+                <h5 class="card-title mb-3"><i class="bi bi-info-circle me-2 text-primary"></i>任务基本信息</h5>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="mb-0">{{ task.title }}</h5>
+                        <span class="risk-badge task-{{ task.status }}">{{ task.get_status_display }}</span>
+                    </div>
+                    <div class="progress mb-2" style="height: 12px;">
+                        <div class="progress-bar {% if task.progress >= 80 %}bg-success{% elif task.progress >= 50 %}bg-info{% else %}bg-warning{% endif %}" role="progressbar" style="width: {{ task.progress }}%"></div>
+                    </div>
+                    <div class="d-flex justify-content-between small text-muted">
+                        <span>处理进度: {{ task.progress }}%</span>
+                        <span>优先级: <span class="risk-badge priority-{{ task.priority }}">{{ task.get_priority_display }}</span></span>
+                    </div>
+                </div>
+                <table class="table table-borderless mb-0">
+                    <tr><th style="width: 140px;" class="text-muted">任务编号</th><td class="fw-bold">{{ task.task_code }}</td></tr>
+                    <tr><th class="text-muted">关联事件</th><td>{% if task.event %}<a href="{% url 'emergency_detail' task.event.pk %}">{{ task.event.title }}</a>{% else %}-{% endif %}</td></tr>
+                    <tr><th class="text-muted">任务描述</th><td>{{ task.description|linebreaks|default:'-' }}</td></tr>
+                    <tr><th class="text-muted">负责人</th><td>{{ task.assignee }}</td></tr>
+                    <tr><th class="text-muted">分派人</th><td>{{ task.assigner|default:'系统' }}</td></tr>
+                    <tr><th class="text-muted">分派时间</th><td>{{ task.assigned_time|date:'Y-m-d H:i:s' }}</td></tr>
+                    <tr><th class="text-muted">要求完成时间</th>
+                        <td>
+                            {% if task.deadline %}
+                            <span class="{% if task.is_overdue and task.status != 'closed' %}text-danger fw-bold{% endif %}">
+                                {{ task.deadline|date:'Y-m-d H:i' }}
+                                {% if task.is_overdue and task.status != 'closed' %}
+                                <span class="badge bg-danger ms-1">已超时</span>
+                                <small class="text-muted ms-2">剩余 {{ task.get_remaining_hours }} 小时</small>
+                                {% endif %}
+                            </span>
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr><th class="text-muted">任务要求</th><td>{{ task.requirements|linebreaks|default:'-' }}</td></tr>
+                    {% if task.actual_completion %}
+                    <tr><th class="text-muted">实际完成时间</th><td>{{ task.actual_completion|date:'Y-m-d H:i' }}</td></tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4 mb-4">
+        {% if task.status in 'assigned,in_progress' %}
+        <div class="card stat-card mb-4">
+            <div class="card-body">
+                <h5 class="card-title mb-3"><i class="bi bi-tools me-2 text-primary"></i>更新进度</h5>
+                <form method="post" action="{% url 'emergency_task_update_progress' task.pk %}">
+                    {% csrf_token %}
+                    <div class="mb-2">
+                        <label class="form-label small">当前进度(%)</label>
+                        {{ progress_form.progress }}
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small">进度说明</label>
+                        {{ progress_form.progress_note }}
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small">操作人</label>
+                        {{ progress_form.operator }}
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-sm w-100"><i class="bi bi-arrow-up me-1"></i>更新进度</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card stat-card">
+            <div class="card-body">
+                <h5 class="card-title mb-3"><i class="bi bi-clock-history me-2 text-primary"></i>进度记录</h5>
+                <div style="max-height: 300px; overflow-y: auto;">
+                    {% for log in progress_logs %}
+                    <div class="timeline-item">
+                        <div class="small text-muted">{{ log.record_time|date:'Y-m-d H:i' }} · {{ log.operator }}</div>
+                        <div class="fw-bold">进度 {{ log.progress }}%</div>
+                        {% if log.progress_note %}
+                        <div class="small">{{ log.progress_note }}</div>
+                        {% endif %}
+                    </div>
+                    {% empty %}
+                    <div class="text-center text-muted py-3 small">暂无进度记录</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card stat-card">
+    <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-chat-left-text-fill me-2 text-primary"></i>反馈记录</h5>
+        {% if task.status in 'assigned,in_progress' %}
+        <a href="{% url 'emergency_feedback_create' task.pk %}" class="btn btn-sm btn-success"><i class="bi bi-plus-lg me-1"></i>提交反馈</a>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        <div style="max-height: 400px; overflow-y: auto;">
+            {% for fb in feedbacks %}
+            <div class="list-group-item">
+                <div class="d-flex w-100 justify-content-between align-items-start mb-2">
+                    <div>
+                        <strong>{{ fb.reporter }}</strong>
+                        <span class="badge bg-{{ fb.feedback_type == 'progress'|yesno:'info,success,warning,danger' }} ms-2">
+                            {{ fb.get_feedback_type_display }}
+                        </span>
+                    </div>
+                    <small class="text-muted">{{ fb.report_time|date:'Y-m-d H:i' }}</small>
+                </div>
+                <p class="mb-1">{{ fb.content|linebreaks }}</p>
+                {% if fb.attachment %}
+                <div class="small text-muted"><i class="bi bi-paperclip me-1"></i>{{ fb.attachment }}</div>
+                {% endif %}
+            </div>
+            {% empty %}
+            <div class="text-center text-muted py-4">
+                <p class="mb-0">暂无反馈记录</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

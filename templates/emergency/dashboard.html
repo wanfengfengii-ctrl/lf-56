@@ -1,0 +1,259 @@
+{% extends 'base.html' %}
+{% block title %}应急指挥大屏 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<h3 class="page-title"><i class="bi bi-hdd-rack me-2"></i>应急指挥大屏</h3>
+
+<div class="row mb-4">
+    <div class="col-md-2 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">突发事件总数</div>
+                    <div class="fs-2 fw-bold text-primary">{{ stats.total_events }}</div>
+                </div>
+                <i class="bi bi-exclamation-triangle-fill stat-icon text-primary"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">特别重大</div>
+                    <div class="fs-2 fw-bold text-danger">{{ stats.level1_count }}</div>
+                </div>
+                <i class="bi bi-exclamation-octagon-fill stat-icon text-danger"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">重大</div>
+                    <div class="fs-2 fw-bold" style="color:#d9480f;">{{ stats.level2_count }}</div>
+                </div>
+                <i class="bi bi-exclamation-triangle-fill stat-icon" style="color:#d9480f;"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">较大</div>
+                    <div class="fs-2 fw-bold" style="color:#f59f00;">{{ stats.level3_count }}</div>
+                </div>
+                <i class="bi bi-exclamation-circle-fill stat-icon" style="color:#f59f00;"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">处置中</div>
+                    <div class="fs-2 fw-bold text-info">{{ stats.in_progress_count }}</div>
+                </div>
+                <i class="bi bi-hourglass-split stat-icon text-info"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">已解除</div>
+                    <div class="fs-2 fw-bold text-success">{{ stats.resolved_count }}</div>
+                </div>
+                <i class="bi bi-check-circle-fill stat-icon text-success"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-8 mb-3">
+        <div class="card stat-card">
+            <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-map-fill me-2 text-primary"></i>事件分布地图</h5>
+                <div>
+                    <button class="btn btn-sm btn-outline-primary" onclick="refreshMap()"><i class="bi bi-arrow-clockwise me-1"></i>刷新</button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div id="eventMap" style="height: 400px; background: linear-gradient(135deg, #e8f4f8 0%, #d4e8ed 100%); border-radius: 8px; position: relative; overflow: hidden;">
+                    <div class="d-flex align-items-center justify-content-center h-100">
+                        <div class="text-center">
+                            <i class="bi bi-map display-1 text-muted opacity-30"></i>
+                            <p class="text-muted mt-2 mb-0">事件分布地图</p>
+                            <small class="text-muted">点击地图标记查看事件详情</small>
+                        </div>
+                    </div>
+                    {% for event in active_events %}
+                    <div class="position-absolute" style="left: {{ event.map_x }}%; top: {{ event.map_y }}%; transform: translate(-50%, -50%);">
+                        <div class="pulse-marker" data-bs-toggle="tooltip" data-bs-placement="top" title="{{ event.title }} - {{ event.get_level_display }}">
+                            <i class="bi bi-geo-alt-fill fs-4 text-{{ event.level|lower }}"></i>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <div class="card stat-card h-100">
+            <div class="card-header bg-white border-bottom">
+                <h5 class="mb-0"><i class="bi bi-list-ol me-2 text-primary"></i>实时事件列表</h5>
+            </div>
+            <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
+                <div class="list-group list-group-flush">
+                    {% for event in active_events %}
+                    <a href="{% url 'emergency_detail' event.pk %}" class="list-group-item list-group-item-action">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1 small fw-bold">{{ event.title|truncatechars:20 }}</h6>
+                            <span class="risk-badge warn-{{ event.level }}">{{ event.get_level_display }}</span>
+                        </div>
+                        <p class="mb-1 small text-muted" style="max-width: 100%;">{{ event.description|truncatechars:40 }}</p>
+                        <small class="text-muted"><i class="bi bi-clock me-1"></i>{{ event.report_time|date:'m-d H:i' }}</small>
+                    </a>
+                    {% empty %}
+                    <div class="text-center text-muted py-4">
+                        <i class="bi bi-check2-circle fs-1 opacity-30"></i>
+                        <p class="mt-2 mb-0">暂无活跃事件</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6 mb-3">
+        <div class="card stat-card h-100">
+            <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-megaphone-fill me-2 text-primary"></i>最新指挥指令</h5>
+                <a href="{% url 'emergency_command_list' %}" class="btn btn-sm btn-outline-primary">全部指令</a>
+            </div>
+            <div class="card-body p-0" style="max-height: 300px; overflow-y: auto;">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                        <tr>
+                            <th>指令时间</th>
+                            <th>指令内容</th>
+                            <th>接收人</th>
+                            <th>状态</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for cmd in latest_commands %}
+                        <tr>
+                            <td class="small">{{ cmd.issue_time|date:'m-d H:i' }}</td>
+                            <td class="small" style="max-width: 200px;">{{ cmd.content|truncatechars:30 }}</td>
+                            <td class="small">{{ cmd.receiver }}</td>
+                            <td><span class="risk-badge status-{{ cmd.status }}">{{ cmd.get_status_display }}</span></td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="4" class="text-center text-muted py-3">暂无指令</td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 mb-3">
+        <div class="card stat-card h-100">
+            <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-chat-left-text-fill me-2 text-primary"></i>最新反馈记录</h5>
+                <a href="{% url 'emergency_task_list' %}" class="btn btn-sm btn-outline-primary">全部任务</a>
+            </div>
+            <div class="card-body p-0" style="max-height: 300px; overflow-y: auto;">
+                <div class="list-group list-group-flush">
+                    {% for fb in latest_feedbacks %}
+                    <div class="list-group-item">
+                        <div class="d-flex w-100 justify-content-between align-items-start">
+                            <div>
+                                <h6 class="mb-1 small fw-bold">{{ fb.task.title|truncatechars:25 }}</h6>
+                                <p class="mb-1 small">{{ fb.content|truncatechars:40 }}</p>
+                                <small class="text-muted"><i class="bi bi-person me-1"></i>{{ fb.reporter }} · {{ fb.report_time|date:'m-d H:i' }}</small>
+                            </div>
+                            <span class="risk-badge task-{{ fb.task.status }}">{{ fb.task.get_status_display }}</span>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="text-center text-muted py-4">
+                        <p class="mb-0">暂无反馈记录</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card stat-card">
+    <div class="card-header bg-white border-bottom">
+        <h5 class="mb-0"><i class="bi bi-bar-chart-line me-2 text-primary"></i>事件趋势（近30天）</h5>
+    </div>
+    <div class="card-body">
+        <canvas id="eventTrendChart" height="120"></canvas>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+.pulse-marker {
+    position: relative;
+    cursor: pointer;
+}
+.pulse-marker::before {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    background: rgba(220, 53, 69, 0.4);
+    border-radius: 50%;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    animation: pulse 2s infinite;
+}
+@keyframes pulse {
+    0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(2.5); opacity: 0; }
+}
+</style>
+<script>
+function refreshMap() {
+    window.location.reload();
+}
+
+const trendCtx = document.getElementById('eventTrendChart');
+new Chart(trendCtx, {
+    type: 'line',
+    data: {
+        labels: {{ trend_labels|safe }},
+        datasets: [
+            { label: '特别重大', data: {{ trend_level1 }}, borderColor: '#dc3545', backgroundColor: 'rgba(220,53,69,0.1)', fill: true, tension: 0.3 },
+            { label: '重大', data: {{ trend_level2 }}, borderColor: '#fd7e14', backgroundColor: 'rgba(253,126,20,0.1)', fill: true, tension: 0.3 },
+            { label: '较大', data: {{ trend_level3 }}, borderColor: '#ffc107', backgroundColor: 'rgba(255,193,7,0.1)', fill: true, tension: 0.3 },
+            { label: '一般', data: {{ trend_level4 }}, borderColor: '#198754', backgroundColor: 'rgba(25,135,84,0.1)', fill: true, tension: 0.3 }
+        ]
+    },
+    options: {
+        responsive: true,
+        scales: { y: { beginAtZero: true } },
+        plugins: { legend: { position: 'bottom' } }
+    }
+});
+
+var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+    return new bootstrap.Tooltip(tooltipTriggerEl);
+});
+</script>
+{% endblock %}

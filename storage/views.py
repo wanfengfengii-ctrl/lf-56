@@ -17,7 +17,10 @@ from .models import (
     InventoryChangeLog, AllocationConfig, AllocationSuggestion,
     AllocationExecution, GrainSituationPrediction,
     Region, TransportRoute, AllocationBatch, ExecutionNode,
-    AbnormalLoss, ArrivalVerification
+    AbnormalLoss, ArrivalVerification,
+    EmergencyEvent, EmergencyImpact, EmergencyPlan,
+    AlternativeRoute, EmergencyCommand, EmergencyFeedback,
+    EmergencyTask, EmergencyUpgrade, EmergencyClosure
 )
 from .forms import (
     GrainTypeForm, GranaryForm, TemperatureHumidityLogForm,
@@ -30,7 +33,13 @@ from .forms import (
     RegionForm, TransportRouteForm, AllocationBatchForm,
     BatchSplitForm, BatchMergeForm, ExecutionNodeForm,
     NodeCompleteForm, AbnormalLossForm, LossHandleForm,
-    ArrivalVerificationForm, VerificationConfirmForm, GranaryRegionForm
+    ArrivalVerificationForm, VerificationConfirmForm, GranaryRegionForm,
+    EmergencyEventForm, EmergencyEventFilterForm, EmergencyPlanForm,
+    EmergencyPlanApproveForm, EmergencyCommandForm, EmergencyCommandExecuteForm,
+    EmergencyFeedbackForm, EmergencyTaskForm, EmergencyTaskProgressForm,
+    EmergencyTaskCompleteForm, EmergencyUpgradeForm, EmergencyUpgradeApproveForm,
+    EmergencyClosureForm, EmergencyClosureApproveForm, AlternativeRouteForm,
+    ImpactAnalysisForm
 )
 from .services import (
     RiskCalculator, recalculate_risks_after_ventilation, recalculate_risks_for_granary,
@@ -38,7 +47,10 @@ from .services import (
     GrainSituationPredictionService, InventoryService, AllocationService,
     PredictionStatisticsService,
     BatchService, NodeTrackingService, LossService,
-    ArrivalVerificationService, CollaborativeAnalyticsService
+    ArrivalVerificationService, CollaborativeAnalyticsService,
+    EmergencyEventService, ImpactAnalysisService, EmergencyPlanService,
+    AlternativeRouteService, EmergencyCommandService, EmergencyTaskService,
+    EmergencyStatisticsService
 )
 
 
@@ -2109,3 +2121,672 @@ def api_loss_by_type(request):
         'labels': list(loss_by_type.keys()),
         'quantities': [round(v, 2) for v in loss_by_type.values()],
     })
+
+
+# -------------------- Emergency Dashboard Views --------------------
+def emergency_dashboard(request):
+    days = int(request.GET.get('days', 30))
+    stats = EmergencyStatisticsService.get_overall_dashboard_stats(days=days)
+    active_events = EmergencyEvent.objects.filter(
+        status__in=['reported', 'analyzing', 'responding', 'monitoring']
+    ).select_related('granary', 'region').order_by('-severity', '-reported_time')[:10]
+    recent_tasks = EmergencyTask.objects.select_related('event').order_by('-assigned_at')[:10]
+    recent_commands = EmergencyCommand.objects.select_related('event').order_by('-issued_at')[:10]
+
+    return render(request, 'emergency/dashboard.html', {
+        'stats': stats,
+        'active_events': active_events,
+        'recent_tasks': recent_tasks,
+        'recent_commands': recent_commands,
+        'days': days,
+    })
+
+
+# -------------------- Emergency Event Views --------------------
+def emergency_list(request):
+    filter_form = EmergencyEventFilterForm(request.GET or None)
+    queryset = EmergencyEvent.objects.select_related('granary', 'region').order_by('-reported_time')
+
+    if filter_form.is_valid():
+        event_type = filter_form.cleaned_data.get('event_type')
+        severity = filter_form.cleaned_data.get('severity')
+        status = filter_form.cleaned_data.get('status')
+        granary = filter_form.cleaned_data.get('granary')
+        start_date = filter_form.cleaned_data.get('start_date')
+        end_date = filter_form.cleaned_data.get('end_date')
+
+        if event_type:
+            queryset = queryset.filter(event_type=event_type)
+        if severity:
+            queryset = queryset.filter(severity=severity)
+        if status:
+            queryset = queryset.filter(status=status)
+        if granary:
+            queryset = queryset.filter(granary=granary)
+        if start_date:
+            queryset = queryset.filter(reported_time__date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(reported_time__date__lte=end_date)
+
+    paginate_by = 30
+    page = request.GET.get('page', 1)
+    from django.core.paginator import Paginator
+    paginator = Paginator(queryset, paginate_by)
+    events = paginator.get_page(page)
+
+    query_params = request.GET.copy()
+    query_params.pop('page', None)
+    query_string = query_params.urlencode()
+    if query_string:
+        query_string = '&' + query_string
+
+    return render(request, 'emergency/list.html', {
+        'events': events,
+        'filter_form': filter_form,
+        'query_string': query_string,
+        'today': date.today(),
+    })
+
+
+def emergency_create(request):
+    if request.method == 'POST':
+        form = EmergencyEventForm(request.POST)
+        if form.is_valid():
+            event = EmergencyEventService.create_event(**form.cleaned_data)
+            messages.success(request, f'应急事件上报成功，事件编号：{event.event_no}')
+            return redirect('emergency_detail', pk=event.pk)
+    else:
+        form = EmergencyEventForm()
+    return render(request, 'emergency/form.html', {'form': form, 'title': '应急事件上报'})
+
+
+def emergency_detail(request, pk):
+    event = get_object_or_404(EmergencyEvent.objects.select_related('granary', 'region'), pk=pk)
+    impacts = event.impacts.select_related('granary', 'batch', 'route', 'execution').all()
+    plans = event.plans.all().order_by('-created_at')
+    commands = event.commands.all().order_by('-issued_at')
+    tasks = event.tasks.all().order_by('-assigned_at')
+    feedbacks = event.feedbacks.all().order_by('-report_time')[:20]
+    upgrades = event.upgrades.all().order_by('-requested_at')
+    closures = event.closures.all().order_by('-requested_at')
+
+    analyze_form = ImpactAnalysisForm()
+    command_form = EmergencyCommandForm(event=event)
+    task_form = EmergencyTaskForm(event=event)
+    feedback_form = EmergencyFeedbackForm()
+    upgrade_form = EmergencyUpgradeForm(event=event)
+    closure_form = EmergencyClosureForm()
+
+    return render(request, 'emergency/event_detail.html', {
+        'event': event,
+        'impacts': impacts,
+        'plans': plans,
+        'commands': commands,
+        'tasks': tasks,
+        'feedbacks': feedbacks,
+        'upgrades': upgrades,
+        'closures': closures,
+        'analyze_form': analyze_form,
+        'command_form': command_form,
+        'task_form': task_form,
+        'feedback_form': feedback_form,
+        'upgrade_form': upgrade_form,
+        'closure_form': closure_form,
+    })
+
+
+def emergency_analyze(request, pk):
+    event = get_object_or_404(EmergencyEvent, pk=pk)
+    if request.method == 'POST':
+        form = ImpactAnalysisForm(request.POST)
+        if form.is_valid():
+            impacts = ImpactAnalysisService.analyze_impacts(
+                event=event,
+                analyze_granaries=form.cleaned_data.get('analyze_granaries', True),
+                analyze_batches=form.cleaned_data.get('analyze_batches', True),
+                analyze_routes=form.cleaned_data.get('analyze_routes', True),
+                analyze_executions=form.cleaned_data.get('analyze_executions', True),
+                impact_radius_km=form.cleaned_data.get('impact_radius_km', 50.0),
+            )
+            messages.success(request, f'联动分析完成，发现 {len(impacts)} 个受影响对象')
+    return redirect('emergency_detail', pk=pk)
+
+
+# -------------------- Emergency Plan Views --------------------
+def emergency_plan_list(request):
+    status = request.GET.get('status', '')
+    event_id = request.GET.get('event', '')
+    queryset = EmergencyPlan.objects.select_related('event').order_by('-created_at')
+
+    if status:
+        queryset = queryset.filter(status=status)
+    if event_id:
+        queryset = queryset.filter(event_id=event_id)
+
+    paginate_by = 30
+    from django.core.paginator import Paginator
+    page = request.GET.get('page', 1)
+    paginator = Paginator(queryset, paginate_by)
+    plans = paginator.get_page(page)
+
+    return render(request, 'emergency/plan_list.html', {
+        'plans': plans,
+        'selected_status': status,
+        'selected_event': event_id,
+    })
+
+
+def emergency_plan_create(request, event_pk):
+    event = get_object_or_404(EmergencyEvent, pk=event_pk)
+    if request.method == 'POST':
+        form = EmergencyPlanForm(request.POST)
+        if form.is_valid():
+            plan = EmergencyPlanService.create_plan(
+                event=event,
+                **form.cleaned_data
+            )
+            plan.status = 'pending'
+            plan.save()
+            messages.success(request, f'应急方案创建成功，方案编号：{plan.plan_no}')
+            return redirect('emergency_plan_detail', pk=plan.pk)
+    else:
+        form = EmergencyPlanForm()
+    return render(request, 'emergency/plan_form.html', {'form': form, 'event': event, 'title': '创建应急方案'})
+
+
+def emergency_plan_detail(request, pk):
+    plan = get_object_or_404(EmergencyPlan.objects.select_related('event'), pk=pk)
+    routes = plan.alternative_routes.all().order_by('-priority_score')
+    tasks = plan.tasks.all().order_by('-assigned_at')
+    approve_form = EmergencyPlanApproveForm()
+    return render(request, 'emergency/plan_detail.html', {
+        'plan': plan,
+        'routes': routes,
+        'tasks': tasks,
+        'approve_form': approve_form,
+    })
+
+
+def emergency_plan_approve(request, pk):
+    plan = get_object_or_404(EmergencyPlan, pk=pk)
+    if request.method == 'POST':
+        form = EmergencyPlanApproveForm(request.POST)
+        if form.is_valid():
+            try:
+                EmergencyPlanService.approve_plan(
+                    plan=plan,
+                    approved_by=form.cleaned_data['approved_by'],
+                    approval_opinion=form.cleaned_data.get('approval_opinion'),
+                )
+                messages.success(request, '方案已批准')
+            except ValueError as e:
+                messages.error(request, str(e))
+    return redirect('emergency_plan_detail', pk=pk)
+
+
+def emergency_plan_reject(request, pk):
+    plan = get_object_or_404(EmergencyPlan, pk=pk)
+    if request.method == 'POST':
+        form = EmergencyPlanApproveForm(request.POST)
+        if form.is_valid():
+            try:
+                EmergencyPlanService.reject_plan(
+                    plan=plan,
+                    approved_by=form.cleaned_data['approved_by'],
+                    approval_opinion=form.cleaned_data.get('approval_opinion'),
+                )
+                messages.success(request, '方案已拒绝')
+            except ValueError as e:
+                messages.error(request, str(e))
+    return redirect('emergency_plan_detail', pk=pk)
+
+
+def emergency_plan_execute(request, pk):
+    plan = get_object_or_404(EmergencyPlan, pk=pk)
+    if request.method == 'POST':
+        executed_by = request.POST.get('executed_by', '系统')
+        try:
+            EmergencyPlanService.start_execution(plan, executed_by)
+            messages.success(request, '方案已开始执行')
+        except ValueError as e:
+            messages.error(request, str(e))
+    return redirect('emergency_plan_detail', pk=pk)
+
+
+def emergency_plan_complete(request, pk):
+    plan = get_object_or_404(EmergencyPlan, pk=pk)
+    if request.method == 'POST':
+        execution_result = request.POST.get('execution_result', '')
+        actual_cost = request.POST.get('actual_cost')
+        actual_cost = float(actual_cost) if actual_cost else None
+        try:
+            EmergencyPlanService.complete_plan(plan, execution_result, actual_cost)
+            messages.success(request, '方案已完成')
+        except ValueError as e:
+            messages.error(request, str(e))
+    return redirect('emergency_plan_detail', pk=pk)
+
+
+# -------------------- Alternative Route Views --------------------
+def alternative_route_list(request, plan_pk):
+    plan = get_object_or_404(EmergencyPlan, pk=plan_pk)
+    routes = plan.alternative_routes.all().order_by('-priority_score')
+    return render(request, 'emergency/alternative_routes.html', {
+        'plan': plan,
+        'routes': routes,
+    })
+
+
+def alternative_route_generate(request, plan_pk):
+    plan = get_object_or_404(EmergencyPlan, pk=plan_pk)
+    if request.method == 'POST':
+        batch_id = request.POST.get('batch_id')
+        route_id = request.POST.get('route_id')
+        original_batch = AllocationBatch.objects.filter(pk=batch_id).first() if batch_id else None
+        original_route = TransportRoute.objects.filter(pk=route_id).first() if route_id else None
+
+        alternatives = AlternativeRouteService.generate_alternative_routes(
+            plan=plan,
+            original_batch=original_batch,
+            original_route=original_route,
+        )
+        messages.success(request, f'成功生成 {len(alternatives)} 条替代路线')
+    return redirect('alternative_route_list', plan_pk=plan_pk)
+
+
+def alternative_route_select(request, pk):
+    alternative = get_object_or_404(AlternativeRoute, pk=pk)
+    if request.method == 'POST':
+        selected_by = request.POST.get('selected_by', '系统')
+        AlternativeRouteService.select_route(alternative, selected_by)
+        messages.success(request, '替代路线已选用')
+    return redirect('alternative_route_list', plan_pk=alternative.plan_id)
+
+
+# -------------------- Emergency Command Views --------------------
+def command_list(request):
+    status = request.GET.get('status', '')
+    event_id = request.GET.get('event', '')
+    queryset = EmergencyCommand.objects.select_related('event').order_by('-issued_at')
+
+    if status:
+        queryset = queryset.filter(status=status)
+    if event_id:
+        queryset = queryset.filter(event_id=event_id)
+
+    paginate_by = 30
+    from django.core.paginator import Paginator
+    page = request.GET.get('page', 1)
+    paginator = Paginator(queryset, paginate_by)
+    commands = paginator.get_page(page)
+
+    return render(request, 'emergency/command_list.html', {
+        'commands': commands,
+        'selected_status': status,
+        'selected_event': event_id,
+    })
+
+
+def command_create(request, event_pk):
+    event = get_object_or_404(EmergencyEvent, pk=event_pk)
+    if request.method == 'POST':
+        form = EmergencyCommandForm(request.POST, event=event)
+        if form.is_valid():
+            command = EmergencyCommandService.create_command(
+                event=event,
+                **form.cleaned_data
+            )
+            messages.success(request, f'指令已下发，指令编号：{command.command_no}')
+            return redirect('command_detail', pk=command.pk)
+    else:
+        form = EmergencyCommandForm(event=event)
+    return render(request, 'emergency/command_form.html', {'form': form, 'event': event, 'title': '下发指令'})
+
+
+def command_detail(request, pk):
+    command = get_object_or_404(EmergencyCommand.objects.select_related('event'), pk=pk)
+    tasks = command.tasks.all().order_by('-assigned_at')
+    feedbacks = command.feedbacks.all().order_by('-report_time')
+    execute_form = EmergencyCommandExecuteForm()
+    return render(request, 'emergency/command_detail.html', {
+        'command': command,
+        'tasks': tasks,
+        'feedbacks': feedbacks,
+        'execute_form': execute_form,
+    })
+
+
+def command_acknowledge(request, pk):
+    command = get_object_or_404(EmergencyCommand, pk=pk)
+    if request.method == 'POST':
+        acknowledged_by = request.POST.get('acknowledged_by', '系统')
+        EmergencyCommandService.acknowledge_command(command, acknowledged_by)
+        messages.success(request, '指令已签收')
+    return redirect('command_detail', pk=pk)
+
+
+def command_execute(request, pk):
+    command = get_object_or_404(EmergencyCommand, pk=pk)
+    if request.method == 'POST':
+        try:
+            EmergencyCommandService.start_command(command)
+            messages.success(request, '指令已开始执行')
+        except ValueError as e:
+            messages.error(request, str(e))
+    return redirect('command_detail', pk=pk)
+
+
+def command_complete(request, pk):
+    command = get_object_or_404(EmergencyCommand, pk=pk)
+    if request.method == 'POST':
+        form = EmergencyCommandExecuteForm(request.POST)
+        if form.is_valid():
+            try:
+                EmergencyCommandService.complete_command(
+                    command=command,
+                    execution_result=form.cleaned_data['execution_result'],
+                    actual_end=form.cleaned_data.get('actual_end'),
+                    feedback_attachments=form.cleaned_data.get('feedback_attachments'),
+                )
+                command.acknowledged_by = form.cleaned_data.get('acknowledged_by')
+                command.save()
+                messages.success(request, '指令已完成')
+            except ValueError as e:
+                messages.error(request, str(e))
+    return redirect('command_detail', pk=pk)
+
+
+# -------------------- Emergency Task Views --------------------
+def task_list(request):
+    status = request.GET.get('status', '')
+    event_id = request.GET.get('event', '')
+    assignee = request.GET.get('assignee', '')
+    queryset = EmergencyTask.objects.select_related('event', 'command', 'plan').order_by('-assigned_at')
+
+    if status:
+        queryset = queryset.filter(status=status)
+    if event_id:
+        queryset = queryset.filter(event_id=event_id)
+    if assignee:
+        queryset = queryset.filter(assignee__icontains=assignee)
+
+    paginate_by = 30
+    from django.core.paginator import Paginator
+    page = request.GET.get('page', 1)
+    paginator = Paginator(queryset, paginate_by)
+    tasks = paginator.get_page(page)
+
+    return render(request, 'emergency/task_list.html', {
+        'tasks': tasks,
+        'selected_status': status,
+        'selected_event': event_id,
+        'selected_assignee': assignee,
+    })
+
+
+def task_create(request, event_pk):
+    event = get_object_or_404(EmergencyEvent, pk=event_pk)
+    if request.method == 'POST':
+        form = EmergencyTaskForm(request.POST, event=event)
+        if form.is_valid():
+            task = EmergencyTaskService.create_task(
+                event=event,
+                **form.cleaned_data
+            )
+            messages.success(request, f'任务已分派，任务编号：{task.task_no}')
+            return redirect('task_detail', pk=task.pk)
+    else:
+        form = EmergencyTaskForm(event=event)
+    return render(request, 'emergency/task_form.html', {'form': form, 'event': event, 'title': '分派任务'})
+
+
+def task_detail(request, pk):
+    task = get_object_or_404(EmergencyTask.objects.select_related('event', 'command', 'plan'), pk=pk)
+    progress_form = EmergencyTaskProgressForm()
+    complete_form = EmergencyTaskCompleteForm()
+    return render(request, 'emergency/task_detail.html', {
+        'task': task,
+        'progress_form': progress_form,
+        'complete_form': complete_form,
+    })
+
+
+def task_accept(request, pk):
+    task = get_object_or_404(EmergencyTask, pk=pk)
+    if request.method == 'POST':
+        accepted_by = request.POST.get('accepted_by', '系统')
+        EmergencyTaskService.accept_task(task, accepted_by)
+        messages.success(request, '任务已接受')
+    return redirect('task_detail', pk=pk)
+
+
+def task_start(request, pk):
+    task = get_object_or_404(EmergencyTask, pk=pk)
+    if request.method == 'POST':
+        try:
+            EmergencyTaskService.start_task(task)
+            messages.success(request, '任务已开始')
+        except ValueError as e:
+            messages.error(request, str(e))
+    return redirect('task_detail', pk=pk)
+
+
+def task_update_progress(request, pk):
+    task = get_object_or_404(EmergencyTask, pk=pk)
+    if request.method == 'POST':
+        form = EmergencyTaskProgressForm(request.POST, instance=task)
+        if form.is_valid():
+            try:
+                EmergencyTaskService.update_progress(
+                    task=task,
+                    progress=form.cleaned_data['progress'],
+                    actual_result=form.cleaned_data.get('actual_result'),
+                    difficulties=form.cleaned_data.get('difficulties'),
+                )
+                messages.success(request, '进度已更新')
+            except ValueError as e:
+                messages.error(request, str(e))
+    return redirect('task_detail', pk=pk)
+
+
+def task_complete(request, pk):
+    task = get_object_or_404(EmergencyTask, pk=pk)
+    if request.method == 'POST':
+        form = EmergencyTaskCompleteForm(request.POST)
+        if form.is_valid():
+            try:
+                EmergencyTaskService.complete_task(
+                    task=task,
+                    actual_end=form.cleaned_data.get('actual_end'),
+                    actual_result=form.cleaned_data.get('actual_result'),
+                    completion_remark=form.cleaned_data.get('completion_remark'),
+                    completed_by=form.cleaned_data.get('completed_by'),
+                )
+                messages.success(request, '任务已完成')
+            except ValueError as e:
+                messages.error(request, str(e))
+    return redirect('task_detail', pk=pk)
+
+
+# -------------------- Emergency Feedback Views --------------------
+def feedback_create(request, event_pk):
+    event = get_object_or_404(EmergencyEvent, pk=event_pk)
+    command_id = request.POST.get('command_id')
+    command = EmergencyCommand.objects.filter(pk=command_id).first() if command_id else None
+
+    if request.method == 'POST':
+        form = EmergencyFeedbackForm(request.POST)
+        if form.is_valid():
+            feedback = EmergencyFeedback.objects.create(
+                event=event,
+                command=command,
+                **form.cleaned_data
+            )
+            messages.success(request, '反馈已提交')
+            return redirect('emergency_detail', pk=event_pk)
+    return redirect('emergency_detail', pk=event_pk)
+
+
+# -------------------- Emergency Upgrade Views --------------------
+def emergency_upgrade(request, pk):
+    event = get_object_or_404(EmergencyEvent, pk=pk)
+    if request.method == 'POST':
+        form = EmergencyUpgradeForm(request.POST, event=event)
+        if form.is_valid():
+            upgrade = EmergencyUpgrade.objects.create(
+                event=event,
+                original_severity=event.severity,
+                new_severity=form.cleaned_data['new_severity'],
+                reason=form.cleaned_data['reason'],
+                basis=form.cleaned_data['basis'],
+                additional_measures=form.cleaned_data.get('additional_measures'),
+                requested_by=form.cleaned_data['requested_by'],
+            )
+            messages.success(request, '升级申请已提交')
+            return redirect('emergency_detail', pk=pk)
+    return redirect('emergency_detail', pk=pk)
+
+
+def emergency_upgrade_approve(request, pk):
+    upgrade = get_object_or_404(EmergencyUpgrade.objects.select_related('event'), pk=pk)
+    if request.method == 'POST':
+        form = EmergencyUpgradeApproveForm(request.POST)
+        if form.is_valid():
+            upgrade.is_approved = True
+            upgrade.approved_by = form.cleaned_data['approved_by']
+            upgrade.approved_at = timezone.now()
+            upgrade.approval_opinion = form.cleaned_data.get('approval_opinion')
+            upgrade.notified_persons = form.cleaned_data.get('notified_persons')
+            upgrade.save()
+
+            event = upgrade.event
+            event.severity = upgrade.new_severity
+            event.is_upgraded = True
+            event.upgrade_reason = upgrade.reason
+            event.upgraded_at = timezone.now()
+            event.upgraded_by = form.cleaned_data['approved_by']
+            event.save()
+
+            messages.success(request, '升级申请已批准')
+    return redirect('emergency_detail', pk=upgrade.event_id)
+
+
+# -------------------- Emergency Closure Views --------------------
+def emergency_closure(request, pk):
+    event = get_object_or_404(EmergencyEvent, pk=pk)
+    if request.method == 'POST':
+        form = EmergencyClosureForm(request.POST)
+        if form.is_valid():
+            closure = EmergencyClosure.objects.create(
+                event=event,
+                **form.cleaned_data
+            )
+            event.status = 'monitoring'
+            event.save()
+            messages.success(request, '解除申请已提交')
+            return redirect('emergency_detail', pk=pk)
+    return redirect('emergency_detail', pk=pk)
+
+
+def emergency_closure_approve(request, pk):
+    closure = get_object_or_404(EmergencyClosure.objects.select_related('event'), pk=pk)
+    if request.method == 'POST':
+        form = EmergencyClosureApproveForm(request.POST)
+        if form.is_valid():
+            closure.is_approved = True
+            closure.verified_by = form.cleaned_data['verified_by']
+            closure.verified_at = timezone.now()
+            closure.approved_by = form.cleaned_data['approved_by']
+            closure.approved_at = timezone.now()
+            closure.total_response_duration = form.cleaned_data.get('total_response_duration')
+            closure.total_disposal_duration = form.cleaned_data.get('total_disposal_duration')
+            closure.save()
+
+            event = closure.event
+            event.status = 'resolved'
+            event.resolved_time = timezone.now()
+            event.resolved_by = form.cleaned_data['approved_by']
+            event.save()
+
+            messages.success(request, '解除申请已批准，事件已解除')
+    return redirect('emergency_detail', pk=closure.event_id)
+
+
+# -------------------- Emergency Analysis Views --------------------
+def emergency_analysis(request):
+    days = int(request.GET.get('days', 90))
+    response_data = EmergencyStatisticsService.get_response_time_analysis(days=days)
+    completion_data = EmergencyStatisticsService.get_completion_rate_analysis(days=days)
+    impact_data = EmergencyStatisticsService.get_impact_scope_analysis(days=days)
+    collaboration_data = EmergencyStatisticsService.get_collaboration_efficiency(days=days)
+    task_stats = EmergencyTaskService.get_task_statistics(days=days)
+
+    return render(request, 'emergency/analysis.html', {
+        'response_data': response_data,
+        'completion_data': completion_data,
+        'impact_data': impact_data,
+        'collaboration_data': collaboration_data,
+        'task_stats': task_stats,
+        'days': days,
+    })
+
+
+# -------------------- Emergency API Views --------------------
+def api_emergency_response_time(request):
+    days = int(request.GET.get('days', 90))
+    data = EmergencyStatisticsService.get_response_time_analysis(days=days)
+    return JsonResponse(data)
+
+
+def api_emergency_completion_rate(request):
+    days = int(request.GET.get('days', 90))
+    data = EmergencyStatisticsService.get_completion_rate_analysis(days=days)
+
+    severity_labels = list(data['by_severity'].keys())
+    severity_rates = [d['rate'] for d in data['by_severity'].values()]
+    type_labels = list(data['by_type'].keys())
+    type_rates = [d['rate'] for d in data['by_type'].values()]
+
+    return JsonResponse({
+        'severity_labels': severity_labels,
+        'severity_rates': severity_rates,
+        'type_labels': type_labels,
+        'type_rates': type_rates,
+    })
+
+
+def api_emergency_impact_scope(request):
+    days = int(request.GET.get('days', 90))
+    data = EmergencyStatisticsService.get_impact_scope_analysis(days=days)
+
+    impact_labels = ['受影响粮仓', '受影响批次', '受影响路径', '受影响在途任务']
+    impact_values = [
+        data['total_affected_granaries'],
+        data['total_affected_batches'],
+        data['total_affected_routes'],
+        data['total_affected_executions'],
+    ]
+
+    region_labels = [d['region'] for d in data['by_region']]
+    region_counts = [d['event_count'] for d in data['by_region']]
+    region_quantities = [round(d['affected_quantity'], 2) for d in data['by_region']]
+    region_losses = [round(d['estimated_loss'], 2) for d in data['by_region']]
+
+    return JsonResponse({
+        'total_events': data['total_events'],
+        'total_affected_quantity': data['total_affected_quantity'],
+        'total_estimated_loss': data['total_estimated_loss'],
+        'total_actual_loss': data['total_actual_loss'],
+        'impact_labels': impact_labels,
+        'impact_values': impact_values,
+        'region_labels': region_labels,
+        'region_counts': region_counts,
+        'region_quantities': region_quantities,
+        'region_losses': region_losses,
+    })
+
+
+def api_emergency_collaboration(request):
+    days = int(request.GET.get('days', 90))
+    data = EmergencyStatisticsService.get_collaboration_efficiency(days=days)
+    return JsonResponse(data)

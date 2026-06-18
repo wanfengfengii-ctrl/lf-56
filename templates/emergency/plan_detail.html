@@ -1,0 +1,178 @@
+{% extends 'base.html' %}
+{% block title %}方案详情 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-file-earmark-text me-2"></i>处置方案详情</h3>
+    <div>
+        <a href="{% url 'emergency_plan_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回列表</a>
+        {% if plan.event %}
+        <a href="{% url 'emergency_detail' plan.event.pk %}" class="btn btn-outline-info ms-2"><i class="bi bi-exclamation-triangle me-1"></i>关联事件</a>
+        {% endif %}
+        {% if plan.status == 'draft' %}
+        <a href="{% url 'emergency_plan_edit' plan.pk %}" class="btn btn-warning ms-2"><i class="bi bi-pencil me-1"></i>编辑</a>
+        <button type="button" class="btn btn-success ms-2" data-bs-toggle="modal" data-bs-target="#approveModal">
+            <i class="bi bi-check-circle me-1"></i>提交审批
+        </button>
+        {% endif %}
+        {% if plan.status == 'approved' %}
+        <button type="button" class="btn btn-primary ms-2" data-bs-toggle="modal" data-bs-target="#executeModal">
+            <i class="bi bi-play-circle me-1"></i>启动执行
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-8 mb-4">
+        <div class="card stat-card">
+            <div class="card-body">
+                <h5 class="card-title mb-3"><i class="bi bi-info-circle me-2 text-primary"></i>方案基本信息</h5>
+                <table class="table table-borderless mb-0">
+                    <tr><th style="width: 140px;" class="text-muted">方案编号</th><td class="fw-bold">{{ plan.plan_code }}</td></tr>
+                    <tr><th class="text-muted">方案名称</th><td>{{ plan.name }}</td></tr>
+                    <tr><th class="text-muted">方案类型</th><td>{{ plan.get_plan_type_display }}</td></tr>
+                    <tr><th class="text-muted">优先级</th><td><span class="risk-badge priority-{{ plan.priority }}">{{ plan.get_priority_display }}</span></td></tr>
+                    <tr><th class="text-muted">关联事件</th><td>{% if plan.event %}<a href="{% url 'emergency_detail' plan.event.pk %}">{{ plan.event.title }}</a>{% else %}-{% endif %}</td></tr>
+                    <tr><th class="text-muted">创建人</th><td>{{ plan.creator|default:'-' }}</td></tr>
+                    <tr><th class="text-muted">创建时间</th><td>{{ plan.created_time|date:'Y-m-d H:i:s' }}</td></tr>
+                    <tr><th class="text-muted">预计完成时间</th><td>{{ plan.expected_completion|date:'Y-m-d H:i'|default:'-' }}</td></tr>
+                    <tr><th class="text-muted">当前状态</th><td><span class="risk-badge status-{{ plan.status }}">{{ plan.get_status_display }}</span></td></tr>
+                    {% if plan.approver %}
+                    <tr><th class="text-muted">审批人</th><td>{{ plan.approver }}</td></tr>
+                    <tr><th class="text-muted">审批时间</th><td>{{ plan.approval_time|date:'Y-m-d H:i' }}</td></tr>
+                    {% endif %}
+                    {% if plan.executor %}
+                    <tr><th class="text-muted">执行人</th><td>{{ plan.executor }}</td></tr>
+                    <tr><th class="text-muted">执行时间</th><td>{{ plan.execution_time|date:'Y-m-d H:i' }}</td></tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-4">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <h5 class="card-title mb-3"><i class="bi bi-activity me-2 text-primary"></i>执行进度</h5>
+                <div class="text-center mb-4">
+                    <div class="display-3 fw-bold text-primary">{{ plan.completion_rate }}%</div>
+                    <div class="text-muted">方案完成率</div>
+                </div>
+                <div class="progress mb-3" style="height: 12px;">
+                    <div class="progress-bar {% if plan.completion_rate >= 80 %}bg-success{% elif plan.completion_rate >= 50 %}bg-info{% else %}bg-warning{% endif %}" role="progressbar" style="width: {{ plan.completion_rate }}%"></div>
+                </div>
+                <div class="d-flex justify-content-between small text-muted">
+                    <span>{{ plan.completed_tasks }} 项已完成</span>
+                    <span>{{ plan.total_tasks }} 项任务</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card stat-card mb-4">
+    <div class="card-header bg-white border-bottom">
+        <h5 class="mb-0"><i class="bi bi-text-paragraph me-2 text-primary"></i>方案概述</h5>
+    </div>
+    <div class="card-body">
+        {{ plan.summary|linebreaks|default:'暂无概述' }}
+    </div>
+</div>
+
+<div class="card stat-card mb-4">
+    <div class="card-header bg-white border-bottom">
+        <h5 class="mb-0"><i class="bi bi-list-ol me-2 text-primary"></i>处置步骤</h5>
+    </div>
+    <div class="card-body">
+        {{ plan.steps|linebreaks|default:'暂无处置步骤' }}
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6 mb-3">
+        <div class="card stat-card h-100">
+            <div class="card-header bg-white border-bottom">
+                <h5 class="mb-0"><i class="bi bi-box-seam me-2 text-primary"></i>资源需求</h5>
+            </div>
+            <div class="card-body">
+                {{ plan.resources|linebreaks|default:'暂无资源需求' }}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 mb-3">
+        <div class="card stat-card h-100">
+            <div class="card-header bg-white border-bottom">
+                <h5 class="mb-0"><i class="bi bi-people me-2 text-primary"></i>人员分工</h5>
+            </div>
+            <div class="card-body">
+                {{ plan.personnel|linebreaks|default:'暂无人员分工' }}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if plan.notes %}
+<div class="card stat-card mb-4">
+    <div class="card-header bg-white border-bottom">
+        <h5 class="mb-0"><i class="bi bi-exclamation-circle me-2 text-primary"></i>注意事项</h5>
+    </div>
+    <div class="card-body">
+        {{ plan.notes|linebreaks }}
+    </div>
+</div>
+{% endif %}
+
+<div class="modal fade" id="approveModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">提交审批</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" action="{% url 'emergency_plan_approve' plan.pk %}">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">审批人 <span class="text-danger">*</span></label>
+                        <input type="text" name="approver" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">审批意见</label>
+                        <textarea name="approval_opinion" class="form-control" rows="3"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-success">提交审批</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="executeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">启动执行</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" action="{% url 'emergency_plan_execute' plan.pk %}">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">执行人 <span class="text-danger">*</span></label>
+                        <input type="text" name="executor" class="form-control" required>
+                    </div>
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>启动执行后，方案状态将变更为"执行中"，请按照处置步骤有序开展工作。
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">确认启动</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

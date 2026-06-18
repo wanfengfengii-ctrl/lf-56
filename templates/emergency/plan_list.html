@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+{% block title %}处置方案列表 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-file-earmark-text me-2"></i>处置方案管理</h3>
+    <div>
+        {% if event %}
+        <a href="{% url 'emergency_detail' event.pk %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回事件详情</a>
+        {% else %}
+        <a href="{% url 'emergency_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回事件列表</a>
+        {% endif %}
+        <a href="{% url 'emergency_plan_create' %}" class="btn btn-primary ms-2"><i class="bi bi-plus-lg me-1"></i>创建方案</a>
+    </div>
+</div>
+
+<div class="card stat-card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small text-muted">方案状态</label>
+                {{ filter_form.status }}
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted">关联事件</label>
+                {{ filter_form.event }}
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted">创建人</label>
+                {{ filter_form.creator }}
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-primary btn-sm w-100"><i class="bi bi-funnel me-1"></i>筛选</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card stat-card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>方案编号</th>
+                    <th>方案名称</th>
+                    <th>关联事件</th>
+                    <th>创建人</th>
+                    <th>创建时间</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for plan in plans %}
+                <tr>
+                    <td class="small fw-bold">{{ plan.plan_code }}</td>
+                    <td>{{ plan.name }}</td>
+                    <td class="small">
+                        {% if plan.event %}
+                        <a href="{% url 'emergency_detail' plan.event.pk %}">{{ plan.event.title|truncatechars:20 }}</a>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td class="small">{{ plan.creator|default:'-' }}</td>
+                    <td class="small">{{ plan.created_time|date:'Y-m-d H:i' }}</td>
+                    <td><span class="risk-badge status-{{ plan.status }}">{{ plan.get_status_display }}</span></td>
+                    <td>
+                        <a href="{% url 'emergency_plan_detail' plan.pk %}" class="btn btn-sm btn-outline-primary">详情</a>
+                        {% if plan.status == 'draft' %}
+                        <a href="{% url 'emergency_plan_edit' plan.pk %}" class="btn btn-sm btn-outline-warning">编辑</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-center text-muted py-4">暂无处置方案</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% if is_paginated %}
+    <div class="card-footer bg-white border-top">
+        <nav>
+            <ul class="pagination pagination-sm mb-0 justify-content-center">
+                {% if page_obj.has_previous %}
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}{{ query_string }}">上一页</a></li>
+                {% endif %}
+                {% for p in page_obj.paginator.page_range %}
+                {% if p == page_obj.number %}
+                <li class="page-item active"><span class="page-link">{{ p }}</span></li>
+                {% else %}
+                <li class="page-item"><a class="page-link" href="?page={{ p }}{{ query_string }}">{{ p }}</a></li>
+                {% endif %}
+                {% endfor %}
+                {% if page_obj.has_next %}
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}{{ query_string }}">下一页</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

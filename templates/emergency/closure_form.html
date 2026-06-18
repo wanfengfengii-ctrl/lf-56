@@ -1,0 +1,188 @@
+{% extends 'base.html' %}
+{% block title %}事件解除申请 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-check-circle me-2"></i>事件解除申请</h3>
+    <div>
+        {% if event %}
+        <a href="{% url 'emergency_detail' event.pk %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回事件详情</a>
+        {% else %}
+        <a href="{% url 'emergency_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回事件列表</a>
+        {% endif %}
+    </div>
+</div>
+
+{% if event %}
+<div class="card stat-card mb-4">
+    <div class="card-body">
+        <h5 class="card-title mb-3"><i class="bi bi-info-circle me-2 text-primary"></i>当前事件信息</h5>
+        <div class="row">
+            <div class="col-md-3">
+                <span class="text-muted small">事件编号：</span>
+                <span class="fw-bold">{{ event.event_code }}</span>
+            </div>
+            <div class="col-md-3">
+                <span class="text-muted small">事件等级：</span>
+                <span class="risk-badge warn-{{ event.level }}">{{ event.get_level_display }}</span>
+            </div>
+            <div class="col-md-3">
+                <span class="text-muted small">当前状态：</span>
+                <span class="risk-badge status-{{ event.status }}">{{ event.get_status_display }}</span>
+            </div>
+            <div class="col-md-3">
+                <span class="text-muted small">持续时间：</span>
+                <span class="fw-bold">{{ event.duration }}</span>
+            </div>
+        </div>
+        <div class="alert alert-success mt-3 mb-0">
+            <i class="bi bi-check-circle-fill me-2"></i>
+            <strong>提示：</strong>事件解除前请确认所有隐患已消除，所有处置任务已完成，不会造成后续影响。
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="row mb-4">
+    <div class="col-md-6 mb-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <h5 class="card-title mb-3"><i class="bi bi-list-check me-2 text-primary"></i>解除条件确认</h5>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="check1" required>
+                    <label class="form-check-label" for="check1">所有处置任务已完成</label>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="check2" required>
+                    <label class="form-check-label" for="check2">事件隐患已彻底消除</label>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="check3" required>
+                    <label class="form-check-label" for="check3">受影响区域已恢复正常</label>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="check4" required>
+                    <label class="form-check-label" for="check4">所有相关人员已确认安全</label>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="check5" required>
+                    <label class="form-check-label" for="check5">损失评估已完成</label>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 mb-3">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <h5 class="card-title mb-3"><i class="bi bi-bar-chart me-2 text-primary"></i>处置效果概览</h5>
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between small">
+                        <span class="text-muted">完成任务数</span>
+                        <span class="fw-bold">{{ summary.completed_tasks }} / {{ summary.total_tasks }}</span>
+                    </div>
+                    <div class="progress-bar-container mt-1">
+                        <div class="progress-bar-fill bg-success" style="width: {{ summary.task_completion_rate }}%"></div>
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between small">
+                        <span class="text-muted">指令响应率</span>
+                        <span class="fw-bold">{{ summary.command_response_rate }}%</span>
+                    </div>
+                    <div class="progress-bar-container mt-1">
+                        <div class="progress-bar-fill bg-info" style="width: {{ summary.command_response_rate }}%"></div>
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <div class="d-flex justify-content-between small">
+                        <span class="text-muted">按时完成率</span>
+                        <span class="fw-bold">{{ summary.on_time_rate }}%</span>
+                    </div>
+                    <div class="progress-bar-container mt-1">
+                        <div class="progress-bar-fill bg-warning" style="width: {{ summary.on_time_rate }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card stat-card">
+    <div class="card-body">
+        <form method="post" novalidate>
+            {% csrf_token %}
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">申请人 <span class="text-danger">*</span></label>
+                    {{ form.applicant }}
+                    {% if form.applicant.errors %}
+                    <div class="text-danger small mt-1">{{ form.applicant.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">解除时间</label>
+                    {{ form.closure_time }}
+                    {% if form.closure_time.errors %}
+                    <div class="text-danger small mt-1">{{ form.closure_time.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">处置总结 <span class="text-danger">*</span></label>
+                    {{ form.summary }}
+                    {% if form.summary.errors %}
+                    <div class="text-danger small mt-1">{{ form.summary.errors }}</div>
+                    {% endif %}
+                    <div class="form-text">请详细总结事件处置过程、采取的主要措施、取得的效果、经验教训等</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">损失评估</label>
+                    {{ form.loss_assessment }}
+                    {% if form.loss_assessment.errors %}
+                    <div class="text-danger small mt-1">{{ form.loss_assessment.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">经济损失（万元）</label>
+                    {{ form.economic_loss }}
+                    {% if form.economic_loss.errors %}
+                    <div class="text-danger small mt-1">{{ form.economic_loss.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">后续改进措施</label>
+                    {{ form.improvement_measures }}
+                    {% if form.improvement_measures.errors %}
+                    <div class="text-danger small mt-1">{{ form.improvement_measures.errors }}</div>
+                    {% endif %}
+                    <div class="form-text">请提出针对此类事件的预防和改进建议</div>
+                </div>
+            </div>
+            <div class="mt-4 d-flex justify-content-end">
+                {% if event %}
+                <a href="{% url 'emergency_detail' event.pk %}" class="btn btn-outline-secondary me-2">取消</a>
+                {% else %}
+                <a href="{% url 'emergency_list' %}" class="btn btn-outline-secondary me-2">取消</a>
+                {% endif %}
+                <button type="submit" class="btn btn-success"><i class="bi bi-check-circle me-1"></i>提交解除申请</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const form = document.querySelector('form');
+form.addEventListener('submit', function(e) {
+    const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+    let allChecked = true;
+    checkboxes.forEach(cb => {
+        if (!cb.checked) allChecked = false;
+    });
+    
+    if (!allChecked) {
+        e.preventDefault();
+        alert('请确认所有解除条件已满足！');
+    }
+});
+</script>
+{% endblock %}

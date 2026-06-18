@@ -1046,3 +1046,541 @@ class AllocationExecution(models.Model):
             raise ValidationError({'actual_arrival': '实际到达时间不能早于出发时间'})
         if self.loss_quantity < 0:
             raise ValidationError({'loss_quantity': '损耗数量不能为负数'})
+
+
+class EmergencyEvent(models.Model):
+    EVENT_TYPE_CHOICES = (
+        ('mold', '突发霉变'),
+        ('pest', '虫害暴发'),
+        ('transport_disrupt', '运输中断'),
+        ('natural_disaster', '自然灾害'),
+        ('equipment_failure', '设备故障'),
+        ('quality_accident', '质量事故'),
+        ('other', '其他突发事件'),
+    )
+    SEVERITY_CHOICES = (
+        ('general', '一般'),
+        ('major', '较大'),
+        ('severe', '重大'),
+        ('extreme', '特别重大'),
+    )
+    STATUS_CHOICES = (
+        ('reported', '已上报'),
+        ('analyzing', '分析中'),
+        ('responding', '处置中'),
+        ('monitoring', '监测中'),
+        ('resolved', '已解除'),
+        ('closed', '已归档'),
+    )
+
+    event_no = models.CharField('事件编号', max_length=50, unique=True)
+    event_type = models.CharField('事件类型', max_length=30, choices=EVENT_TYPE_CHOICES)
+    severity = models.CharField('严重程度', max_length=20, choices=SEVERITY_CHOICES, default='general')
+    status = models.CharField('事件状态', max_length=20, choices=STATUS_CHOICES, default='reported')
+
+    title = models.CharField('事件标题', max_length=200)
+    description = models.TextField('事件描述')
+    location = models.CharField('发生地点', max_length=200)
+    latitude = models.FloatField('纬度', blank=True, null=True)
+    longitude = models.FloatField('经度', blank=True, null=True)
+
+    reported_by = models.CharField('上报人', max_length=100)
+    reported_time = models.DateTimeField('上报时间', default=timezone.now)
+    first_response_time = models.DateTimeField('首次响应时间', blank=True, null=True)
+
+    granary = models.ForeignKey(Granary, on_delete=models.SET_NULL, blank=True, null=True,
+                                verbose_name='关联粮仓', related_name='emergency_events')
+    region = models.ForeignKey(Region, on_delete=models.SET_NULL, blank=True, null=True,
+                               verbose_name='关联区域', related_name='emergency_events')
+
+    affected_area = models.FloatField('影响面积(平方米)', blank=True, null=True)
+    affected_quantity = models.FloatField('影响数量(吨)', blank=True, null=True)
+    estimated_loss = models.FloatField('预估损失(元)', blank=True, null=True)
+    actual_loss = models.FloatField('实际损失(元)', blank=True, null=True)
+
+    is_upgraded = models.BooleanField('是否升级', default=False)
+    upgrade_reason = models.TextField('升级原因', blank=True, null=True)
+    upgraded_at = models.DateTimeField('升级时间', blank=True, null=True)
+    upgraded_by = models.CharField('升级操作人', max_length=100, blank=True, null=True)
+
+    resolved_time = models.DateTimeField('解除时间', blank=True, null=True)
+    resolved_by = models.CharField('解除操作人', max_length=100, blank=True, null=True)
+    resolution_summary = models.TextField('处置总结', blank=True, null=True)
+
+    closed_time = models.DateTimeField('归档时间', blank=True, null=True)
+    closed_by = models.CharField('归档人', max_length=100, blank=True, null=True)
+    archive_remark = models.TextField('归档备注', blank=True, null=True)
+
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        db_table = 'emergency_event'
+        verbose_name = '应急事件'
+        verbose_name_plural = verbose_name
+        ordering = ['-reported_time']
+
+    def __str__(self):
+        return f'{self.event_no} - {self.title}'
+
+    def get_response_duration_minutes(self):
+        if self.first_response_time and self.reported_time:
+            delta = self.first_response_time - self.reported_time
+            return round(delta.total_seconds() / 60, 1)
+        return None
+
+    def get_resolution_duration_hours(self):
+        if self.resolved_time and self.reported_time:
+            delta = self.resolved_time - self.reported_time
+            return round(delta.total_seconds() / 3600, 1)
+        return None
+
+
+class EmergencyImpact(models.Model):
+    IMPACT_TYPE_CHOICES = (
+        ('granary', '受影响粮仓'),
+        ('batch', '受影响批次'),
+        ('route', '受影响路径'),
+        ('execution', '受影响在途任务'),
+    )
+
+    event = models.ForeignKey(EmergencyEvent, on_delete=models.CASCADE,
+                              verbose_name='关联事件', related_name='impacts')
+    impact_type = models.CharField('影响类型', max_length=20, choices=IMPACT_TYPE_CHOICES)
+
+    granary = models.ForeignKey(Granary, on_delete=models.CASCADE, blank=True, null=True,
+                                verbose_name='受影响粮仓', related_name='emergency_impacts')
+    batch = models.ForeignKey(AllocationBatch, on_delete=models.CASCADE, blank=True, null=True,
+                              verbose_name='受影响批次', related_name='emergency_impacts')
+    route = models.ForeignKey(TransportRoute, on_delete=models.CASCADE, blank=True, null=True,
+                              verbose_name='受影响路径', related_name='emergency_impacts')
+    execution = models.ForeignKey(AllocationExecution, on_delete=models.CASCADE, blank=True, null=True,
+                                  verbose_name='受影响执行单', related_name='emergency_impacts')
+
+    impact_description = models.TextField('影响描述', blank=True, null=True)
+    affected_quantity = models.FloatField('影响数量(吨)', blank=True, null=True)
+    severity_assessment = models.CharField('影响程度评估', max_length=200, blank=True, null=True)
+
+    is_handled = models.BooleanField('是否已处置', default=False)
+    handled_at = models.DateTimeField('处置时间', blank=True, null=True)
+    handled_by = models.CharField('处置人', max_length=100, blank=True, null=True)
+
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        db_table = 'emergency_impact'
+        verbose_name = '事件影响'
+        verbose_name_plural = verbose_name
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.event.event_no} - {self.get_impact_type_display()}'
+
+    def clean(self):
+        impact_fields = [self.granary, self.batch, self.route, self.execution]
+        filled_fields = [f for f in impact_fields if f is not None]
+        if len(filled_fields) != 1:
+            raise ValidationError('必须且只能指定一种受影响对象')
+
+
+class EmergencyPlan(models.Model):
+    PLAN_STATUS_CHOICES = (
+        ('draft', '草稿'),
+        ('pending', '待审批'),
+        ('approved', '已批准'),
+        ('rejected', '已拒绝'),
+        ('executing', '执行中'),
+        ('completed', '已完成'),
+        ('cancelled', '已取消'),
+    )
+    PLAN_TYPE_CHOICES = (
+        ('disposal', '应急处置方案'),
+        ('reroute', '替代调运方案'),
+        ('transfer', '紧急调拨方案'),
+        ('comprehensive', '综合处置方案'),
+    )
+
+    event = models.ForeignKey(EmergencyEvent, on_delete=models.CASCADE,
+                              verbose_name='关联事件', related_name='plans')
+    plan_no = models.CharField('方案编号', max_length=50, unique=True)
+    plan_type = models.CharField('方案类型', max_length=20, choices=PLAN_TYPE_CHOICES)
+    plan_name = models.CharField('方案名称', max_length=200)
+    status = models.CharField('方案状态', max_length=20, choices=PLAN_STATUS_CHOICES, default='draft')
+
+    objectives = models.TextField('处置目标')
+    measures = models.TextField('处置措施')
+    resource_requirements = models.TextField('资源需求', blank=True, null=True)
+    expected_effect = models.TextField('预期效果', blank=True, null=True)
+
+    estimated_cost = models.FloatField('预估费用(元)', blank=True, null=True)
+    actual_cost = models.FloatField('实际费用(元)', blank=True, null=True)
+    estimated_duration_hours = models.FloatField('预估时长(小时)', blank=True, null=True)
+    actual_duration_hours = models.FloatField('实际时长(小时)', blank=True, null=True)
+
+    created_by = models.CharField('编制人', max_length=100)
+    created_at = models.DateTimeField('编制时间', auto_now_add=True)
+
+    approved_by = models.CharField('审批人', max_length=100, blank=True, null=True)
+    approved_at = models.DateTimeField('审批时间', blank=True, null=True)
+    approval_opinion = models.TextField('审批意见', blank=True, null=True)
+
+    executed_by = models.CharField('执行人', max_length=100, blank=True, null=True)
+    execution_start = models.DateTimeField('执行开始时间', blank=True, null=True)
+    execution_end = models.DateTimeField('执行结束时间', blank=True, null=True)
+    execution_result = models.TextField('执行结果', blank=True, null=True)
+
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        db_table = 'emergency_plan'
+        verbose_name = '应急方案'
+        verbose_name_plural = verbose_name
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.plan_no} - {self.plan_name}'
+
+
+class AlternativeRoute(models.Model):
+    STATUS_CHOICES = (
+        ('suggested', '建议路线'),
+        ('selected', '已选用'),
+        ('rejected', '已拒绝'),
+        ('completed', '已完成'),
+    )
+
+    plan = models.ForeignKey(EmergencyPlan, on_delete=models.CASCADE,
+                             verbose_name='关联方案', related_name='alternative_routes')
+    original_route = models.ForeignKey(TransportRoute, on_delete=models.SET_NULL, blank=True, null=True,
+                                       verbose_name='原运输路径', related_name='emergency_alternatives')
+    original_batch = models.ForeignKey(AllocationBatch, on_delete=models.SET_NULL, blank=True, null=True,
+                                       verbose_name='原运输批次', related_name='emergency_alternatives')
+
+    alternative_route = models.ForeignKey(TransportRoute, on_delete=models.SET_NULL, blank=True, null=True,
+                                          verbose_name='替代运输路径', related_name='as_emergency_alternative')
+    route_description = models.TextField('路线描述')
+    waypoints = models.TextField('途经点', blank=True, null=True)
+
+    distance_km = models.FloatField('运输距离(公里)', default=0.0)
+    estimated_hours = models.FloatField('预计时长(小时)', default=0.0)
+    cost_per_ton = models.FloatField('单位运费(元/吨)', default=0.0)
+    total_cost = models.FloatField('总运费(元)', blank=True, null=True)
+
+    transport_type = models.CharField('运输方式', max_length=20,
+                                      choices=TransportRoute.TRANSPORT_TYPE_CHOICES, default='road')
+    priority_score = models.FloatField('优先级评分', default=0.0)
+    risk_assessment = models.TextField('风险评估', blank=True, null=True)
+
+    source_granary = models.ForeignKey(Granary, on_delete=models.CASCADE, blank=True, null=True,
+                                       related_name='alt_route_sources', verbose_name='出发粮仓')
+    target_granary = models.ForeignKey(Granary, on_delete=models.CASCADE, blank=True, null=True,
+                                       related_name='alt_route_targets', verbose_name='目的粮仓')
+
+    status = models.CharField('状态', max_length=20, choices=STATUS_CHOICES, default='suggested')
+    selected_by = models.CharField('选用人', max_length=100, blank=True, null=True)
+    selected_at = models.DateTimeField('选用时间', blank=True, null=True)
+
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        db_table = 'alternative_route'
+        verbose_name = '替代路线'
+        verbose_name_plural = verbose_name
+        ordering = ['priority_score', '-created_at']
+
+    def __str__(self):
+        return f'{self.plan.plan_no} - {self.route_description[:50]}'
+
+
+class EmergencyCommand(models.Model):
+    COMMAND_TYPE_CHOICES = (
+        ('dispatch', '调度指令'),
+        ('assignment', '任务分派'),
+        ('coordination', '协调指令'),
+        ('notice', '通知公告'),
+    )
+    PRIORITY_CHOICES = (
+        ('urgent', '紧急'),
+        ('high', '高'),
+        ('normal', '普通'),
+        ('low', '低'),
+    )
+    STATUS_CHOICES = (
+        ('pending', '待执行'),
+        ('executing', '执行中'),
+        ('completed', '已完成'),
+        ('cancelled', '已取消'),
+    )
+
+    event = models.ForeignKey(EmergencyEvent, on_delete=models.CASCADE,
+                              verbose_name='关联事件', related_name='commands')
+    command_no = models.CharField('指令编号', max_length=50, unique=True)
+    command_type = models.CharField('指令类型', max_length=20, choices=COMMAND_TYPE_CHOICES)
+    priority = models.CharField('优先级', max_length=20, choices=PRIORITY_CHOICES, default='normal')
+    status = models.CharField('状态', max_length=20, choices=STATUS_CHOICES, default='pending')
+
+    title = models.CharField('指令标题', max_length=200)
+    content = models.TextField('指令内容')
+    requirements = models.TextField('执行要求', blank=True, null=True)
+
+    issuer = models.CharField('签发人', max_length=100)
+    issued_at = models.DateTimeField('签发时间', default=timezone.now)
+
+    assignee = models.CharField('责任人', max_length=100)
+    assignee_department = models.CharField('责任部门', max_length=100, blank=True, null=True)
+    deadline = models.DateTimeField('要求完成时间', blank=True, null=True)
+
+    actual_start = models.DateTimeField('实际开始时间', blank=True, null=True)
+    actual_end = models.DateTimeField('实际完成时间', blank=True, null=True)
+    execution_result = models.TextField('执行结果', blank=True, null=True)
+    feedback_attachments = models.TextField('反馈附件', blank=True, null=True)
+
+    acknowledged_by = models.CharField('签收人', max_length=100, blank=True, null=True)
+    acknowledged_at = models.DateTimeField('签收时间', blank=True, null=True)
+
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        db_table = 'emergency_command'
+        verbose_name = '指挥调度'
+        verbose_name_plural = verbose_name
+        ordering = ['-issued_at']
+
+    def __str__(self):
+        return f'{self.command_no} - {self.title}'
+
+    def get_remaining_hours(self):
+        if self.status == 'completed' or not self.deadline:
+            return 0
+        now = timezone.now()
+        if now >= self.deadline:
+            return 0
+        delta = self.deadline - now
+        return round(delta.total_seconds() / 3600, 1)
+
+    def is_overdue(self):
+        if self.status == 'completed' or not self.deadline:
+            return False
+        if self.actual_end:
+            return self.actual_end > self.deadline
+        return timezone.now() > self.deadline
+
+
+class EmergencyFeedback(models.Model):
+    FEEDBACK_TYPE_CHOICES = (
+        ('progress', '进度汇报'),
+        ('situation', '现场情况'),
+        ('problem', '问题上报'),
+        ('result', '处置结果'),
+        ('other', '其他反馈'),
+    )
+    SEVERITY_CHOICES = (
+        ('improved', '好转'),
+        ('stable', '稳定'),
+        ('worsened', '恶化'),
+        ('unknown', '未知'),
+    )
+
+    event = models.ForeignKey(EmergencyEvent, on_delete=models.CASCADE,
+                              verbose_name='关联事件', related_name='feedbacks')
+    command = models.ForeignKey(EmergencyCommand, on_delete=models.SET_NULL, blank=True, null=True,
+                                verbose_name='关联指令', related_name='feedbacks')
+    feedback_type = models.CharField('反馈类型', max_length=20, choices=FEEDBACK_TYPE_CHOICES)
+    situation_assessment = models.CharField('现场态势评估', max_length=20,
+                                            choices=SEVERITY_CHOICES, default='unknown')
+
+    location = models.CharField('反馈地点', max_length=200, blank=True, null=True)
+    reporter = models.CharField('反馈人', max_length=100)
+    reporter_phone = models.CharField('联系电话', max_length=20, blank=True, null=True)
+    report_time = models.DateTimeField('反馈时间', default=timezone.now)
+
+    content = models.TextField('反馈内容')
+    measures_taken = models.TextField('已采取措施', blank=True, null=True)
+    needs_assistance = models.BooleanField('需要支援', default=False)
+    assistance_details = models.TextField('支援需求', blank=True, null=True)
+
+    temperature = models.FloatField('现场温度(℃)', blank=True, null=True)
+    humidity = models.FloatField('现场湿度(%)', blank=True, null=True)
+    pest_density = models.FloatField('虫害密度(头/公斤)', blank=True, null=True)
+    affected_area = models.FloatField('影响面积(平方米)', blank=True, null=True)
+
+    attachments = models.TextField('附件说明', blank=True, null=True)
+    photos = models.TextField('现场照片', blank=True, null=True)
+
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        db_table = 'emergency_feedback'
+        verbose_name = '现场反馈'
+        verbose_name_plural = verbose_name
+        ordering = ['-report_time']
+
+    def __str__(self):
+        return f'{self.event.event_no} - {self.get_feedback_type_display()}'
+
+
+class EmergencyTask(models.Model):
+    TASK_TYPE_CHOICES = (
+        ('disposal', '现场处置'),
+        ('transport', '运输保障'),
+        ('supply', '物资供应'),
+        ('monitoring', '监测监控'),
+        ('coordination', '协调沟通'),
+        ('assessment', '损失评估'),
+        ('documentation', '资料归档'),
+    )
+    STATUS_CHOICES = (
+        ('assigned', '已分派'),
+        ('accepted', '已接受'),
+        ('in_progress', '进行中'),
+        ('completed', '已完成'),
+        ('delayed', '已延期'),
+        ('cancelled', '已取消'),
+    )
+    PRIORITY_CHOICES = (
+        ('critical', '极重要'),
+        ('high', '重要'),
+        ('medium', '一般'),
+        ('low', '次要'),
+    )
+
+    event = models.ForeignKey(EmergencyEvent, on_delete=models.CASCADE,
+                              verbose_name='关联事件', related_name='tasks')
+    command = models.ForeignKey(EmergencyCommand, on_delete=models.SET_NULL, blank=True, null=True,
+                                verbose_name='关联指令', related_name='tasks')
+    plan = models.ForeignKey(EmergencyPlan, on_delete=models.SET_NULL, blank=True, null=True,
+                             verbose_name='关联方案', related_name='tasks')
+
+    task_no = models.CharField('任务编号', max_length=50, unique=True)
+    task_type = models.CharField('任务类型', max_length=20, choices=TASK_TYPE_CHOICES)
+    title = models.CharField('任务标题', max_length=200)
+    description = models.TextField('任务描述')
+    priority = models.CharField('优先级', max_length=20, choices=PRIORITY_CHOICES, default='medium')
+    status = models.CharField('状态', max_length=20, choices=STATUS_CHOICES, default='assigned')
+
+    assignee = models.CharField('负责人', max_length=100)
+    assignee_department = models.CharField('负责部门', max_length=100, blank=True, null=True)
+    assigner = models.CharField('分派人', max_length=100)
+    assigned_at = models.DateTimeField('分派时间', default=timezone.now)
+
+    start_time = models.DateTimeField('计划开始时间', blank=True, null=True)
+    due_time = models.DateTimeField('截止时间', blank=True, null=True)
+    actual_start = models.DateTimeField('实际开始时间', blank=True, null=True)
+    actual_end = models.DateTimeField('实际完成时间', blank=True, null=True)
+
+    progress = models.IntegerField('进度(%)', default=0)
+    expected_result = models.TextField('预期成果', blank=True, null=True)
+    actual_result = models.TextField('实际成果', blank=True, null=True)
+    difficulties = models.TextField('遇到的困难', blank=True, null=True)
+
+    accepted_by = models.CharField('接受人', max_length=100, blank=True, null=True)
+    accepted_at = models.DateTimeField('接受时间', blank=True, null=True)
+
+    completed_by = models.CharField('完成确认人', max_length=100, blank=True, null=True)
+    completed_at = models.DateTimeField('完成确认时间', blank=True, null=True)
+    completion_remark = models.TextField('完成备注', blank=True, null=True)
+
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        db_table = 'emergency_task'
+        verbose_name = '应急任务'
+        verbose_name_plural = verbose_name
+        ordering = ['-assigned_at']
+
+    def __str__(self):
+        return f'{self.task_no} - {self.title}'
+
+    def clean(self):
+        if self.progress is not None and (self.progress < 0 or self.progress > 100):
+            raise ValidationError({'progress': '进度必须在0-100之间'})
+
+    def get_remaining_hours(self):
+        if self.status == 'completed' or not self.due_time:
+            return 0
+        now = timezone.now()
+        if now >= self.due_time:
+            return 0
+        delta = self.due_time - now
+        return round(delta.total_seconds() / 3600, 1)
+
+    def is_overdue(self):
+        if self.status == 'completed' or not self.due_time:
+            return False
+        if self.actual_end:
+            return self.actual_end > self.due_time
+        return timezone.now() > self.due_time
+
+
+class EmergencyUpgrade(models.Model):
+    event = models.ForeignKey(EmergencyEvent, on_delete=models.CASCADE,
+                              verbose_name='关联事件', related_name='upgrades')
+    original_severity = models.CharField('原严重程度', max_length=20,
+                                         choices=EmergencyEvent.SEVERITY_CHOICES)
+    new_severity = models.CharField('新严重程度', max_length=20,
+                                    choices=EmergencyEvent.SEVERITY_CHOICES)
+
+    reason = models.TextField('升级原因')
+    basis = models.TextField('升级依据')
+    additional_measures = models.TextField('补充处置措施', blank=True, null=True)
+
+    requested_by = models.CharField('申请人', max_length=100)
+    requested_at = models.DateTimeField('申请时间', default=timezone.now)
+    approved_by = models.CharField('审批人', max_length=100, blank=True, null=True)
+    approved_at = models.DateTimeField('审批时间', blank=True, null=True)
+    approval_opinion = models.TextField('审批意见', blank=True, null=True)
+
+    is_approved = models.BooleanField('是否批准', default=False)
+    notified_persons = models.TextField('已通知人员', blank=True, null=True)
+
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+
+    class Meta:
+        db_table = 'emergency_upgrade'
+        verbose_name = '事件升级'
+        verbose_name_plural = verbose_name
+        ordering = ['-requested_at']
+
+    def __str__(self):
+        return f'{self.event.event_no} - 升级'
+
+
+class EmergencyClosure(models.Model):
+    event = models.ForeignKey(EmergencyEvent, on_delete=models.CASCADE,
+                              verbose_name='关联事件', related_name='closures')
+
+    verification_results = models.TextField('现场核查结果')
+    stability_assessment = models.TextField('稳定性评估')
+    remaining_risks = models.TextField('遗留风险', blank=True, null=True)
+    followup_actions = models.TextField('后续行动建议', blank=True, null=True)
+
+    total_response_duration = models.FloatField('总响应时长(小时)', blank=True, null=True)
+    total_disposal_duration = models.FloatField('总处置时长(小时)', blank=True, null=True)
+    resource_usage_summary = models.TextField('资源使用情况', blank=True, null=True)
+    lessons_learned = models.TextField('经验教训', blank=True, null=True)
+    improvement_suggestions = models.TextField('改进建议', blank=True, null=True)
+
+    requested_by = models.CharField('申请人', max_length=100)
+    requested_at = models.DateTimeField('申请时间', default=timezone.now)
+    verified_by = models.CharField('核查人', max_length=100, blank=True, null=True)
+    verified_at = models.DateTimeField('核查时间', blank=True, null=True)
+    approved_by = models.CharField('批准人', max_length=100, blank=True, null=True)
+    approved_at = models.DateTimeField('批准时间', blank=True, null=True)
+
+    is_approved = models.BooleanField('是否批准解除', default=False)
+
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+
+    class Meta:
+        db_table = 'emergency_closure'
+        verbose_name = '事件解除'
+        verbose_name_plural = verbose_name
+        ordering = ['-requested_at']
+
+    def __str__(self):
+        return f'{self.event.event_no} - 解除'

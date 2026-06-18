@@ -1964,3 +1964,1051 @@ class CollaborativeAnalyticsService:
             stats['quantity'] = round(stats['quantity'], 2)
             result.append(stats)
         return sorted(result, key=lambda x: -x['count'])
+
+
+from .models import (
+    EmergencyEvent, EmergencyImpact, EmergencyPlan, AlternativeRoute,
+    EmergencyCommand, EmergencyFeedback, EmergencyTask, EmergencyUpgrade,
+    EmergencyClosure
+)
+import math
+
+
+class EmergencyEventService:
+    @staticmethod
+    def _generate_event_no():
+        today = date.today()
+        count = EmergencyEvent.objects.filter(
+            created_at__date=today
+        ).count() + 1
+        return f'EM{today.strftime("%Y%m%d")}{count:04d}'
+
+    @staticmethod
+    def _haversine_distance(lat1, lon1, lat2, lon2):
+        R = 6371.0
+        lat1_rad = math.radians(lat1)
+        lon1_rad = math.radians(lon1)
+        lat2_rad = math.radians(lat2)
+        lon2_rad = math.radians(lon2)
+        dlat = lat2_rad - lat1_rad
+        dlon = lon2_rad - lon1_rad
+        a = math.sin(dlat / 2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2)**2
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        return R * c
+
+    @classmethod
+    def create_event(cls, **kwargs):
+        event = EmergencyEvent.objects.create(
+            event_no=cls._generate_event_no(),
+            **kwargs
+        )
+        return event
+
+    @staticmethod
+    def update_event_status(event, status, operator=None):
+        event.status = status
+        if status == 'analyzing' and not event.first_response_time:
+            event.first_response_time = timezone.now()
+        event.save()
+        return event
+
+    @staticmethod
+    def get_event_overview(days=30):
+        end_date = date.today()
+        start_date = end_date - timedelta(days=days - 1)
+        events = EmergencyEvent.objects.filter(
+            reported_time__date__gte=start_date,
+            reported_time__date__lte=end_date
+        )
+        total = events.count()
+        by_type = {}
+        for et, label in EmergencyEvent.EVENT_TYPE_CHOICES:
+            by_type[label] = events.filter(event_type=et).count()
+        by_severity = {}
+        for s, label in EmergencyEvent.SEVERITY_CHOICES:
+            by_severity[label] = events.filter(severity=s).count()
+        by_status = {}
+        for st, label in EmergencyEvent.STATUS_CHOICES:
+            by_status[label] = events.filter(status=st).count()
+
+        resolved = events.filter(status__in=['resolved', 'closed'])
+        avg_response = 0
+        avg_resolution = 0
+        if resolved.exists():
+            response_times = []
+            resolution_times = []
+            for e in resolved:
+                r = e.get_response_duration_minutes()
+                if r:
+                    response_times.append(r)
+                r2 = e.get_resolution_duration_hours()
+                if r2:
+                    resolution_times.append(r2)
+            if response_times:
+                avg_response = round(sum(response_times) / len(response_times), 1)
+            if resolution_times:
+                avg_resolution = round(sum(resolution_times) / len(resolution_times), 1)
+
+        return {
+            'total_events': total,
+            'by_type': by_type,
+            'by_severity': by_severity,
+            'by_status': by_status,
+            'avg_response_minutes': avg_response,
+            'avg_resolution_hours': avg_resolution,
+            'completion_rate': round(resolved.count() / total * 100, 1) if total > 0 else 0,
+        }
+
+
+class ImpactAnalysisService:
+    @staticmethod
+    def analyze_impacts(event, analyze_granaries=True, analyze_batches=True,
+                        analyze_routes=True, analyze_executions=True,
+                        impact_radius_km=50.0):
+        impacts = []
+        event_lat = event.latitude
+        event_lon = event.longitude
+        event_region = event.region
+        event_granary = event.granary
+
+        if analyze_granaries:
+            granary_impacts = ImpactAnalysisService._analyze_granary_impacts(
+                event, event_lat, event_lon, event_region, event_granary, impact_radius_km
+            )
+            impacts.extend(granary_impacts)
+
+        if analyze_batches:
+            batch_impacts = ImpactAnalysisService._analyze_batch_impacts(
+                event, event_granary, event_lat, event_lon, impact_radius_km
+            )
+            impacts.extend(batch_impacts)
+
+        if analyze_routes:
+            route_impacts = ImpactAnalysisService._analyze_route_impacts(
+                event, event_lat, event_lon, event_region, impact_radius_km
+            )
+            impacts.extend(route_impacts)
+
+        if analyze_executions:
+            execution_impacts = ImpactAnalysisService._analyze_execution_impacts(
+                event, event_granary, event_lat, event_lon, impact_radius_km
+            )
+            impacts.extend(execution_impacts)
+
+        event.status = 'analyzing'
+        if not event.first_response_time:
+            event.first_response_time = timezone.now()
+        event.save()
+
+        return impacts
+
+    @staticmethod
+    def _analyze_granary_impacts(event, event_lat, event_lon, event_region, event_granary, impact_radius):
+        impacts = []
+        granaries = Granary.objects.filter(is_active=True)
+
+        for granary in granaries:
+            is_affected = False
+            severity = '低'
+            description = ''
+
+            if event_granary and granary.id == event_granary.id:
+                is_affected = True
+                severity = '高'
+                description = '事件发生地粮仓'
+            elif event_region and granary.region_id == event_region.id:
+                is_affected = True
+                severity = '中'
+                description = '同区域粮仓'
+            elif event_lat and event_lon and granary.latitude and granary.longitude:
+                distance = EmergencyEventService._haversine_distance(
+                    event_lat, event_lon, granary.latitude, granary.longitude
+                )
+                if distance <= impact_radius:
+                    is_affected = True
+                    if distance <= impact_radius * 0.3:
+                        severity = '高'
+                    elif distance <= impact_radius * 0.6:
+                        severity = '中'
+                    else:
+                        severity = '低'
+                    description = f'距离事件发生地约{round(distance, 1)}公里'
+
+            if is_affected:
+                existing = EmergencyImpact.objects.filter(
+                    event=event, impact_type='granary', granary=granary
+                ).first()
+                if not existing:
+                    impact = EmergencyImpact.objects.create(
+                        event=event,
+                        impact_type='granary',
+                        granary=granary,
+                        impact_description=description,
+                        affected_quantity=granary.current_stock,
+                        severity_assessment=severity,
+                    )
+                    impacts.append(impact)
+
+        return impacts
+
+    @staticmethod
+    def _analyze_batch_impacts(event, event_granary, event_lat, event_lon, impact_radius):
+        impacts = []
+        active_batches = AllocationBatch.objects.filter(
+            status__in=['pending', 'loading', 'in_transit', 'unloading']
+        ).select_related('execution__suggestion__source_granary',
+                         'execution__suggestion__target_granary',
+                         'route')
+
+        for batch in active_batches:
+            is_affected = False
+            severity = '低'
+            description = ''
+            execution = batch.execution
+            source = execution.suggestion.source_granary
+            target = execution.suggestion.target_granary
+
+            if event_granary:
+                if source.id == event_granary.id or target.id == event_granary.id:
+                    is_affected = True
+                    severity = '高'
+                    if source.id == event_granary.id:
+                        description = '出发粮仓受事件影响'
+                    else:
+                        description = '目的粮仓受事件影响'
+            elif event_lat and event_lon:
+                source_affected = (source.latitude and source.longitude and
+                    EmergencyEventService._haversine_distance(
+                        event_lat, event_lon, source.latitude, source.longitude
+                    ) <= impact_radius)
+                target_affected = (target.latitude and target.longitude and
+                    EmergencyEventService._haversine_distance(
+                        event_lat, event_lon, target.latitude, target.longitude
+                    ) <= impact_radius)
+                if source_affected or target_affected:
+                    is_affected = True
+                    severity = '中'
+                    description = '运输路径受事件影响'
+
+            if batch.route:
+                route_source = batch.route.source_granary
+                route_target = batch.route.target_granary
+                if event_lat and event_lon:
+                    mid_lat = (route_source.latitude + route_target.latitude) / 2 if route_source.latitude and route_target.latitude else None
+                    mid_lon = (route_source.longitude + route_target.longitude) / 2 if route_source.longitude and route_target.longitude else None
+                    if mid_lat and mid_lon:
+                        route_dist = EmergencyEventService._haversine_distance(
+                            event_lat, event_lon, mid_lat, mid_lon
+                        )
+                        if route_dist <= impact_radius and not is_affected:
+                            is_affected = True
+                            severity = '中'
+                            description = '运输路径经过受影响区域'
+
+            if is_affected:
+                existing = EmergencyImpact.objects.filter(
+                    event=event, impact_type='batch', batch=batch
+                ).first()
+                if not existing:
+                    impact = EmergencyImpact.objects.create(
+                        event=event,
+                        impact_type='batch',
+                        batch=batch,
+                        impact_description=description,
+                        affected_quantity=batch.quantity,
+                        severity_assessment=severity,
+                    )
+                    impacts.append(impact)
+
+        return impacts
+
+    @staticmethod
+    def _analyze_route_impacts(event, event_lat, event_lon, event_region, impact_radius):
+        impacts = []
+        routes = TransportRoute.objects.filter(is_active=True).select_related(
+            'source_granary', 'target_granary'
+        )
+
+        for route in routes:
+            is_affected = False
+            severity = '低'
+            description = ''
+            source = route.source_granary
+            target = route.target_granary
+
+            if event_region and (source.region_id == event_region.id or
+                                 target.region_id == event_region.id):
+                is_affected = True
+                severity = '中'
+                description = '路径经过受影响区域'
+            elif event_lat and event_lon:
+                source_dist = None
+                target_dist = None
+                if source.latitude and source.longitude:
+                    source_dist = EmergencyEventService._haversine_distance(
+                        event_lat, event_lon, source.latitude, source.longitude
+                    )
+                if target.latitude and target.longitude:
+                    target_dist = EmergencyEventService._haversine_distance(
+                        event_lat, event_lon, target.latitude, target.longitude
+                    )
+                mid_lat = (source.latitude + target.latitude) / 2 if source.latitude and target.latitude else None
+                mid_lon = (source.longitude + target.longitude) / 2 if source.longitude and target.longitude else None
+                mid_dist = None
+                if mid_lat and mid_lon:
+                    mid_dist = EmergencyEventService._haversine_distance(
+                        event_lat, event_lon, mid_lat, mid_lon
+                    )
+
+                distances = [d for d in [source_dist, target_dist, mid_dist] if d is not None]
+                if distances and min(distances) <= impact_radius:
+                    is_affected = True
+                    min_dist = min(distances)
+                    if min_dist <= impact_radius * 0.3:
+                        severity = '高'
+                    elif min_dist <= impact_radius * 0.6:
+                        severity = '中'
+                    else:
+                        severity = '低'
+                    description = f'路径最近点距离事件发生地约{round(min_dist, 1)}公里'
+
+            if is_affected:
+                existing = EmergencyImpact.objects.filter(
+                    event=event, impact_type='route', route=route
+                ).first()
+                if not existing:
+                    impact = EmergencyImpact.objects.create(
+                        event=event,
+                        impact_type='route',
+                        route=route,
+                        impact_description=description,
+                        severity_assessment=severity,
+                    )
+                    impacts.append(impact)
+
+        return impacts
+
+    @staticmethod
+    def _analyze_execution_impacts(event, event_granary, event_lat, event_lon, impact_radius):
+        impacts = []
+        active_executions = AllocationExecution.objects.filter(
+            status__in=['scheduled', 'loading', 'in_transit', 'unloading']
+        ).select_related('suggestion__source_granary',
+                         'suggestion__target_granary')
+
+        for execution in active_executions:
+            is_affected = False
+            severity = '低'
+            description = ''
+            source = execution.suggestion.source_granary
+            target = execution.suggestion.target_granary
+
+            if event_granary and (source.id == event_granary.id or
+                                  target.id == event_granary.id):
+                is_affected = True
+                severity = '高'
+                if source.id == event_granary.id:
+                    description = '出发粮仓受事件影响，可能无法按时装货'
+                else:
+                    description = '目的粮仓受事件影响，可能无法正常收货'
+            elif event_lat and event_lon:
+                source_affected = (source.latitude and source.longitude and
+                    EmergencyEventService._haversine_distance(
+                        event_lat, event_lon, source.latitude, source.longitude
+                    ) <= impact_radius)
+                target_affected = (target.latitude and target.longitude and
+                    EmergencyEventService._haversine_distance(
+                        event_lat, event_lon, target.latitude, target.longitude
+                    ) <= impact_radius)
+                if source_affected or target_affected:
+                    is_affected = True
+                    severity = '中'
+                    if source_affected:
+                        description = '出发地在受影响区域内'
+                    else:
+                        description = '目的地在受影响区域内'
+
+            if is_affected:
+                existing = EmergencyImpact.objects.filter(
+                    event=event, impact_type='execution', execution=execution
+                ).first()
+                if not existing:
+                    total_qty = execution.get_total_batch_quantity()
+                    impact = EmergencyImpact.objects.create(
+                        event=event,
+                        impact_type='execution',
+                        execution=execution,
+                        impact_description=description,
+                        affected_quantity=total_qty,
+                        severity_assessment=severity,
+                    )
+                    impacts.append(impact)
+
+        return impacts
+
+
+class EmergencyPlanService:
+    @staticmethod
+    def _generate_plan_no():
+        today = date.today()
+        count = EmergencyPlan.objects.filter(
+            created_at__date=today
+        ).count() + 1
+        return f'EP{today.strftime("%Y%m%d")}{count:04d}'
+
+    @classmethod
+    def create_plan(cls, event, plan_type, plan_name, objectives, measures,
+                    created_by, **kwargs):
+        plan = EmergencyPlan.objects.create(
+            event=event,
+            plan_no=cls._generate_plan_no(),
+            plan_type=plan_type,
+            plan_name=plan_name,
+            objectives=objectives,
+            measures=measures,
+            created_by=created_by,
+            **kwargs
+        )
+        return plan
+
+    @classmethod
+    def generate_auto_plan(cls, event):
+        impacts = event.impacts.all()
+        plan_type = 'comprehensive'
+        if impacts.filter(impact_type='route').exists() or impacts.filter(impact_type='batch').exists():
+            plan_type = 'reroute'
+        elif impacts.filter(impact_type='granary').exists():
+            plan_type = 'disposal'
+
+        objectives_parts = []
+        measures_parts = []
+        affected_granaries = impacts.filter(impact_type='granary').count()
+        affected_batches = impacts.filter(impact_type='batch').count()
+        affected_routes = impacts.filter(impact_type='route').count()
+        affected_executions = impacts.filter(impact_type='execution').count()
+
+        objectives_parts.append(f'控制{event.get_event_type_display()}事件影响范围')
+        if affected_granaries > 0:
+            objectives_parts.append(f'保护{affected_granaries}个受影响粮仓的粮食安全')
+        if affected_batches > 0:
+            objectives_parts.append(f'保障{affected_batches}个运输批次的安全')
+        if affected_routes > 0:
+            objectives_parts.append(f'优化{affected_routes}条受影响运输路线')
+        objectives_parts.append('确保应急响应时长符合标准')
+        objectives = '；'.join(objectives_parts)
+
+        measures_parts.append('1. 启动应急预案，成立应急指挥小组')
+        if event.event_type == 'mold':
+            measures_parts.append('2. 对受影响粮仓进行全面检测，评估霉变程度')
+            measures_parts.append('3. 加强通风降温，必要时进行熏蒸处理')
+            measures_parts.append('4. 对受影响粮食进行隔离，防止交叉污染')
+        elif event.event_type == 'pest':
+            measures_parts.append('2. 立即组织虫害消杀工作')
+            measures_parts.append('3. 对周边粮仓进行预防性处理')
+            measures_parts.append('4. 加强监测，防止虫害扩散')
+        elif event.event_type == 'transport_disrupt':
+            measures_parts.append('2. 启动替代运输路线方案')
+            measures_parts.append('3. 协调运输资源，确保物资供应')
+            measures_parts.append('4. 及时与相关方沟通，调整运输计划')
+        else:
+            measures_parts.append('2. 根据事件类型采取相应处置措施')
+            measures_parts.append('3. 加强现场监测，及时掌握动态')
+        measures_parts.append('5. 定期汇报处置进展，直至事件解除')
+        measures = '\n'.join(measures_parts)
+
+        plan = cls.create_plan(
+            event=event,
+            plan_type=plan_type,
+            plan_name=f'{event.title}-应急处置方案',
+            objectives=objectives,
+            measures=measures,
+            created_by='系统自动生成',
+            estimated_duration_hours=72 if event.severity in ('severe', 'extreme') else 24,
+        )
+        plan.status = 'pending'
+        plan.save()
+
+        return plan
+
+    @staticmethod
+    def approve_plan(plan, approved_by, approval_opinion=None):
+        if plan.status != 'pending':
+            raise ValueError('只有待审批状态的方案才能审批')
+        plan.status = 'approved'
+        plan.approved_by = approved_by
+        plan.approved_at = timezone.now()
+        plan.approval_opinion = approval_opinion
+        plan.save()
+        return plan
+
+    @staticmethod
+    def reject_plan(plan, approved_by, approval_opinion=None):
+        if plan.status != 'pending':
+            raise ValueError('只有待审批状态的方案才能审批')
+        plan.status = 'rejected'
+        plan.approved_by = approved_by
+        plan.approved_at = timezone.now()
+        plan.approval_opinion = approval_opinion
+        plan.save()
+        return plan
+
+    @staticmethod
+    def start_execution(plan, executed_by):
+        if plan.status != 'approved':
+            raise ValueError('只有已批准的方案才能执行')
+        plan.status = 'executing'
+        plan.executed_by = executed_by
+        plan.execution_start = timezone.now()
+        plan.save()
+
+        event = plan.event
+        event.status = 'responding'
+        event.save()
+        return plan
+
+    @staticmethod
+    def complete_plan(plan, execution_result, actual_cost=None):
+        if plan.status != 'executing':
+            raise ValueError('只有执行中的方案才能完成')
+        plan.status = 'completed'
+        plan.execution_end = timezone.now()
+        plan.execution_result = execution_result
+        if actual_cost is not None:
+            plan.actual_cost = actual_cost
+        if plan.execution_start and plan.execution_end:
+            delta = plan.execution_end - plan.execution_start
+            plan.actual_duration_hours = round(delta.total_seconds() / 3600, 1)
+        plan.save()
+        return plan
+
+
+class AlternativeRouteService:
+    @classmethod
+    def generate_alternative_routes(cls, plan, original_batch=None, original_route=None):
+        event = plan.event
+        alternatives = []
+
+        if original_batch:
+            original_route = original_batch.route
+            source = original_batch.execution.suggestion.source_granary
+            target = original_batch.execution.suggestion.target_granary
+            quantity = original_batch.quantity
+        elif original_route:
+            source = original_route.source_granary
+            target = original_route.target_granary
+            quantity = 0
+        else:
+            return alternatives
+
+        impacted_route_ids = []
+        for impact in event.impacts.filter(impact_type='route'):
+            if impact.route:
+                impacted_route_ids.append(impact.route.id)
+
+        all_routes = TransportRoute.objects.filter(
+            source_granary=source,
+            is_active=True
+        ).exclude(id__in=impacted_route_ids).select_related('target_granary')
+
+        same_target_routes = all_routes.filter(target_granary=target)
+        for route in same_target_routes:
+            priority = cls._calculate_route_priority(route, quantity, event)
+            alt = AlternativeRoute.objects.create(
+                plan=plan,
+                original_route=original_route,
+                original_batch=original_batch,
+                alternative_route=route,
+                route_description=f'{source.code}→{target.code} ({route.get_transport_type_display()})',
+                distance_km=route.distance_km,
+                estimated_hours=route.estimated_hours,
+                cost_per_ton=route.cost_per_ton,
+                total_cost=round(route.cost_per_ton * quantity, 2) if quantity > 0 else None,
+                transport_type=route.transport_type,
+                priority_score=priority,
+                risk_assessment='备用路线，风险较低',
+                source_granary=source,
+                target_granary=target,
+            )
+            alternatives.append(alt)
+
+        if len(alternatives) < 3:
+            nearby_granaries = Granary.objects.filter(
+                is_active=True,
+                grain_type=target.grain_type
+            ).exclude(id=target.id).exclude(id=source.id)
+
+            if event.latitude and event.longitude:
+                nearby_granaries = sorted(
+                    nearby_granaries,
+                    key=lambda g: EmergencyEventService._haversine_distance(
+                        event.latitude, event.longitude,
+                        g.latitude or 0, g.longitude or 0
+                    ) if g.latitude and g.longitude else 9999
+                )
+
+            for g in nearby_granaries[:5]:
+                route_to_g = all_routes.filter(target_granary=g).first()
+                if route_to_g:
+                    g_to_target = TransportRoute.objects.filter(
+                        source_granary=g,
+                        target_granary=target,
+                        is_active=True
+                    ).exclude(id__in=impacted_route_ids).first()
+                    if g_to_target:
+                        total_distance = route_to_g.distance_km + g_to_target.distance_km
+                        total_hours = route_to_g.estimated_hours + g_to_target.estimated_hours
+                        total_cost_per_ton = route_to_g.cost_per_ton + g_to_target.cost_per_ton
+                        priority = cls._calculate_priority(total_distance, total_hours, total_cost_per_ton, event)
+                        alt = AlternativeRoute.objects.create(
+                            plan=plan,
+                            original_route=original_route,
+                            original_batch=original_batch,
+                            route_description=f'{source.code}→{g.code}→{target.code} (中转)',
+                            waypoints=f'{g.code}中转仓',
+                            distance_km=round(total_distance, 1),
+                            estimated_hours=round(total_hours, 1),
+                            cost_per_ton=round(total_cost_per_ton, 2),
+                            total_cost=round(total_cost_per_ton * quantity, 2) if quantity > 0 else None,
+                            transport_type='multi',
+                            priority_score=priority,
+                            risk_assessment=f'经{g.code}中转，避开受影响区域',
+                            source_granary=source,
+                            target_granary=target,
+                        )
+                        alternatives.append(alt)
+
+        for alt in alternatives:
+            cls._update_route_risk_assessment(alt, event)
+
+        return sorted(alternatives, key=lambda x: -x.priority_score)
+
+    @staticmethod
+    def _calculate_route_priority(route, quantity, event):
+        return AlternativeRouteService._calculate_priority(
+            route.distance_km, route.estimated_hours, route.cost_per_ton, event
+        )
+
+    @staticmethod
+    def _calculate_priority(distance, hours, cost, event):
+        dist_score = max(0, 100 - distance)
+        time_score = max(0, 100 - hours * 2)
+        cost_score = max(0, 100 - cost / 10)
+        severity_weight = 1.5 if event.severity in ('severe', 'extreme') else 1.0
+        total = (dist_score * 0.3 + time_score * 0.4 * severity_weight + cost_score * 0.3)
+        return round(total, 2)
+
+    @staticmethod
+    def _update_route_risk_assessment(alt, event):
+        risk_levels = []
+        if alt.distance_km < 200:
+            risk_levels.append('距离适中')
+        if alt.estimated_hours < 24:
+            risk_levels.append('时效可控')
+        if alt.transport_type == 'road':
+            risk_levels.append('公路运输灵活性高')
+        elif alt.transport_type == 'rail':
+            risk_levels.append('铁路运输可靠性强')
+        if not risk_levels:
+            risk_levels.append('需进一步评估')
+        alt.risk_assessment = '；'.join(risk_levels)
+        alt.save()
+
+    @staticmethod
+    def select_route(alternative, selected_by):
+        alternative.status = 'selected'
+        alternative.selected_by = selected_by
+        alternative.selected_at = timezone.now()
+        alternative.save()
+        return alternative
+
+
+class EmergencyCommandService:
+    @staticmethod
+    def _generate_command_no():
+        today = date.today()
+        count = EmergencyCommand.objects.filter(
+            created_at__date=today
+        ).count() + 1
+        return f'CMD{today.strftime("%Y%m%d")}{count:04d}'
+
+    @classmethod
+    def create_command(cls, event, **kwargs):
+        command = EmergencyCommand.objects.create(
+            event=event,
+            command_no=cls._generate_command_no(),
+            **kwargs
+        )
+        return command
+
+    @staticmethod
+    def acknowledge_command(command, acknowledged_by):
+        command.acknowledged_by = acknowledged_by
+        command.acknowledged_at = timezone.now()
+        command.save()
+        return command
+
+    @staticmethod
+    def start_command(command):
+        if command.status != 'pending':
+            raise ValueError('只有待执行的指令才能开始')
+        command.status = 'executing'
+        command.actual_start = timezone.now()
+        command.save()
+        return command
+
+    @staticmethod
+    def complete_command(command, execution_result, actual_end=None,
+                         feedback_attachments=None):
+        if command.status != 'executing':
+            raise ValueError('只有执行中的指令才能完成')
+        command.status = 'completed'
+        command.actual_end = actual_end or timezone.now()
+        command.execution_result = execution_result
+        command.feedback_attachments = feedback_attachments
+        command.save()
+        return command
+
+
+class EmergencyTaskService:
+    @staticmethod
+    def _generate_task_no():
+        today = date.today()
+        count = EmergencyTask.objects.filter(
+            created_at__date=today
+        ).count() + 1
+        return f'TASK{today.strftime("%Y%m%d")}{count:04d}'
+
+    @classmethod
+    def create_task(cls, event, **kwargs):
+        task = EmergencyTask.objects.create(
+            event=event,
+            task_no=cls._generate_task_no(),
+            **kwargs
+        )
+        return task
+
+    @staticmethod
+    def accept_task(task, accepted_by):
+        task.status = 'accepted'
+        task.accepted_by = accepted_by
+        task.accepted_at = timezone.now()
+        if not task.actual_start:
+            task.actual_start = timezone.now()
+        task.save()
+        return task
+
+    @staticmethod
+    def start_task(task):
+        if task.status not in ('assigned', 'accepted'):
+            raise ValueError('只有已分派或已接受的任务才能开始')
+        task.status = 'in_progress'
+        task.actual_start = timezone.now()
+        task.save()
+        return task
+
+    @staticmethod
+    def update_progress(task, progress, actual_result=None, difficulties=None):
+        if task.status != 'in_progress':
+            raise ValueError('只有进行中的任务才能更新进度')
+        if progress < 0 or progress > 100:
+            raise ValueError('进度必须在0-100之间')
+        task.progress = progress
+        if actual_result is not None:
+            task.actual_result = actual_result
+        if difficulties is not None:
+            task.difficulties = difficulties
+        if progress >= 100:
+            task.status = 'completed'
+            task.actual_end = timezone.now()
+        task.save()
+        return task
+
+    @staticmethod
+    def complete_task(task, actual_end=None, actual_result=None,
+                      completion_remark=None, completed_by=None):
+        if task.status != 'in_progress':
+            raise ValueError('只有进行中的任务才能完成')
+        task.status = 'completed'
+        task.progress = 100
+        task.actual_end = actual_end or timezone.now()
+        if actual_result is not None:
+            task.actual_result = actual_result
+        if completion_remark is not None:
+            task.completion_remark = completion_remark
+        if completed_by is not None:
+            task.completed_by = completed_by
+            task.completed_at = timezone.now()
+        task.save()
+        return task
+
+    @staticmethod
+    def get_task_statistics(event=None, days=30):
+        end_date = date.today()
+        start_date = end_date - timedelta(days=days - 1)
+        query = EmergencyTask.objects.filter(
+            created_at__date__gte=start_date,
+            created_at__date__lte=end_date
+        )
+        if event:
+            query = query.filter(event=event)
+        tasks = query.all()
+
+        total = tasks.count()
+        by_type = {}
+        for t, label in EmergencyTask.TASK_TYPE_CHOICES:
+            by_type[label] = tasks.filter(task_type=t).count()
+        by_status = {}
+        for s, label in EmergencyTask.STATUS_CHOICES:
+            by_status[label] = tasks.filter(status=s).count()
+        by_priority = {}
+        for p, label in EmergencyTask.PRIORITY_CHOICES:
+            by_priority[label] = tasks.filter(priority=p).count()
+
+        completed = tasks.filter(status='completed')
+        on_time = 0
+        total_completion_hours = 0
+        for t in completed:
+            if not t.is_overdue():
+                on_time += 1
+            if t.actual_start and t.actual_end:
+                delta = t.actual_end - t.actual_start
+                total_completion_hours += delta.total_seconds() / 3600
+
+        return {
+            'total_tasks': total,
+            'by_type': by_type,
+            'by_status': by_status,
+            'by_priority': by_priority,
+            'completed_count': completed.count(),
+            'on_time_count': on_time,
+            'on_time_rate': round(on_time / completed.count() * 100, 1) if completed.count() > 0 else 0,
+            'avg_completion_hours': round(total_completion_hours / completed.count(), 1) if completed.count() > 0 else 0,
+            'completion_rate': round(completed.count() / total * 100, 1) if total > 0 else 0,
+        }
+
+
+class EmergencyStatisticsService:
+    @staticmethod
+    def get_response_time_analysis(days=90):
+        end_date = date.today()
+        start_date = end_date - timedelta(days=days - 1)
+        events = EmergencyEvent.objects.filter(
+            reported_time__date__gte=start_date,
+            reported_time__date__lte=end_date,
+            status__in=['resolved', 'closed']
+        )
+
+        daily_data = {}
+        for i in range(days):
+            d = start_date + timedelta(days=i)
+            daily_data[d] = {'count': 0, 'response_times': [], 'resolution_times': []}
+
+        for e in events:
+            d = e.reported_time.date()
+            if d in daily_data:
+                daily_data[d]['count'] += 1
+                rt = e.get_response_duration_minutes()
+                if rt:
+                    daily_data[d]['response_times'].append(rt)
+                rst = e.get_resolution_duration_hours()
+                if rst:
+                    daily_data[d]['resolution_times'].append(rst)
+
+        labels = []
+        event_counts = []
+        avg_response = []
+        avg_resolution = []
+        for d in sorted(daily_data.keys()):
+            data = daily_data[d]
+            labels.append(d.strftime('%m-%d'))
+            event_counts.append(data['count'])
+            if data['response_times']:
+                avg_response.append(round(sum(data['response_times']) / len(data['response_times']), 1))
+            else:
+                avg_response.append(None)
+            if data['resolution_times']:
+                avg_resolution.append(round(sum(data['resolution_times']) / len(data['resolution_times']), 1))
+            else:
+                avg_resolution.append(None)
+
+        overall_avg_response = 0
+        overall_avg_resolution = 0
+        all_response = [rt for d in daily_data.values() for rt in d['response_times']]
+        all_resolution = [rt for d in daily_data.values() for rt in d['resolution_times']]
+        if all_response:
+            overall_avg_response = round(sum(all_response) / len(all_response), 1)
+        if all_resolution:
+            overall_avg_resolution = round(sum(all_resolution) / len(all_resolution), 1)
+
+        return {
+            'labels': labels,
+            'event_counts': event_counts,
+            'avg_response_minutes': avg_response,
+            'avg_resolution_hours': avg_resolution,
+            'overall_avg_response': overall_avg_response,
+            'overall_avg_resolution': overall_avg_resolution,
+            'total_resolved': events.count(),
+        }
+
+    @staticmethod
+    def get_completion_rate_analysis(days=90):
+        end_date = date.today()
+        start_date = end_date - timedelta(days=days - 1)
+
+        severity_data = {}
+        for s, label in EmergencyEvent.SEVERITY_CHOICES:
+            events = EmergencyEvent.objects.filter(
+                reported_time__date__gte=start_date,
+                reported_time__date__lte=end_date,
+                severity=s
+            )
+            total = events.count()
+            completed = events.filter(status__in=['resolved', 'closed']).count()
+            severity_data[label] = {
+                'total': total,
+                'completed': completed,
+                'rate': round(completed / total * 100, 1) if total > 0 else 0,
+            }
+
+        type_data = {}
+        for t, label in EmergencyEvent.EVENT_TYPE_CHOICES:
+            events = EmergencyEvent.objects.filter(
+                reported_time__date__gte=start_date,
+                reported_time__date__lte=end_date,
+                event_type=t
+            )
+            total = events.count()
+            completed = events.filter(status__in=['resolved', 'closed']).count()
+            type_data[label] = {
+                'total': total,
+                'completed': completed,
+                'rate': round(completed / total * 100, 1) if total > 0 else 0,
+            }
+
+        return {
+            'by_severity': severity_data,
+            'by_type': type_data,
+        }
+
+    @staticmethod
+    def get_impact_scope_analysis(days=90):
+        end_date = date.today()
+        start_date = end_date - timedelta(days=days - 1)
+        events = EmergencyEvent.objects.filter(
+            reported_time__date__gte=start_date,
+            reported_time__date__lte=end_date
+        ).prefetch_related('impacts')
+
+        total_affected_granaries = 0
+        total_affected_batches = 0
+        total_affected_routes = 0
+        total_affected_executions = 0
+        total_affected_quantity = 0
+        total_estimated_loss = 0
+        total_actual_loss = 0
+
+        for e in events:
+            impacts = e.impacts.all()
+            total_affected_granaries += impacts.filter(impact_type='granary').count()
+            total_affected_batches += impacts.filter(impact_type='batch').count()
+            total_affected_routes += impacts.filter(impact_type='route').count()
+            total_affected_executions += impacts.filter(impact_type='execution').count()
+            total_affected_quantity += e.affected_quantity or 0
+            total_estimated_loss += e.estimated_loss or 0
+            total_actual_loss += e.actual_loss or 0
+
+        region_data = {}
+        for e in events:
+            region = e.region
+            if region:
+                key = region.name
+                if key not in region_data:
+                    region_data[key] = {
+                        'region': key,
+                        'event_count': 0,
+                        'affected_quantity': 0,
+                        'estimated_loss': 0,
+                    }
+                region_data[key]['event_count'] += 1
+                region_data[key]['affected_quantity'] += e.affected_quantity or 0
+                region_data[key]['estimated_loss'] += e.estimated_loss or 0
+
+        return {
+            'total_events': events.count(),
+            'total_affected_granaries': total_affected_granaries,
+            'total_affected_batches': total_affected_batches,
+            'total_affected_routes': total_affected_routes,
+            'total_affected_executions': total_affected_executions,
+            'total_affected_quantity': round(total_affected_quantity, 2),
+            'total_estimated_loss': round(total_estimated_loss, 2),
+            'total_actual_loss': round(total_actual_loss, 2),
+            'by_region': list(region_data.values()),
+        }
+
+    @staticmethod
+    def get_collaboration_efficiency(days=90):
+        end_date = date.today()
+        start_date = end_date - timedelta(days=days - 1)
+
+        events = EmergencyEvent.objects.filter(
+            reported_time__date__gte=start_date,
+            reported_time__date__lte=end_date
+        ).prefetch_related('commands', 'tasks', 'feedbacks')
+
+        total_commands = 0
+        avg_command_response = 0
+        command_responses = []
+        total_tasks = 0
+        avg_task_completion = 0
+        task_completions = []
+        total_feedbacks = 0
+
+        for e in events:
+            commands = e.commands.all()
+            total_commands += commands.count()
+            for cmd in commands:
+                if cmd.issued_at and cmd.acknowledged_at:
+                    delta = cmd.acknowledged_at - cmd.issued_at
+                    command_responses.append(delta.total_seconds() / 60)
+
+            tasks = e.tasks.all()
+            total_tasks += tasks.count()
+            for task in tasks.filter(status='completed'):
+                if task.assigned_at and task.actual_end:
+                    delta = task.actual_end - task.assigned_at
+                    task_completions.append(delta.total_seconds() / 3600)
+
+            total_feedbacks += e.feedbacks.count()
+
+        if command_responses:
+            avg_command_response = round(sum(command_responses) / len(command_responses), 1)
+        if task_completions:
+            avg_task_completion = round(sum(task_completions) / len(task_completions), 1)
+
+        return {
+            'total_events': events.count(),
+            'total_commands': total_commands,
+            'avg_command_response_minutes': avg_command_response,
+            'total_tasks': total_tasks,
+            'avg_task_completion_hours': avg_task_completion,
+            'total_feedbacks': total_feedbacks,
+            'avg_feedbacks_per_event': round(total_feedbacks / events.count(), 1) if events.count() > 0 else 0,
+        }
+
+    @staticmethod
+    def get_overall_dashboard_stats(days=30):
+        overview = EmergencyEventService.get_event_overview(days=days)
+        completion = EmergencyStatisticsService.get_completion_rate_analysis(days=days)
+        impact = EmergencyStatisticsService.get_impact_scope_analysis(days=days)
+        collaboration = EmergencyStatisticsService.get_collaboration_efficiency(days=days)
+        response = EmergencyStatisticsService.get_response_time_analysis(days=days)
+        tasks = EmergencyTaskService.get_task_statistics(days=days)
+
+        return {
+            'overview': overview,
+            'completion': completion,
+            'impact': impact,
+            'collaboration': collaboration,
+            'response': response,
+            'tasks': tasks,
+        }

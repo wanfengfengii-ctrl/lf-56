@@ -1,0 +1,385 @@
+{% extends 'base.html' %}
+{% block title %}应急可视化分析 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-graph-up-arrow me-2"></i>应急可视化分析</h3>
+    <div>
+        <select id="periodSelect" class="form-select form-select-sm d-inline-block" style="width: auto;">
+            <option value="7" {% if days == 7 %}selected{% endif %}>近7天</option>
+            <option value="30" {% if days == 30 %}selected{% endif %}>近30天</option>
+            <option value="90" {% if days == 90 %}selected{% endif %}>近90天</option>
+            <option value="365" {% if days == 365 %}selected{% endif %}>近一年</option>
+        </select>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">事件总数</div>
+                    <div class="fs-2 fw-bold text-primary">{{ stats.total_events }}</div>
+                </div>
+                <i class="bi bi-exclamation-triangle-fill stat-icon text-primary"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">已解除</div>
+                    <div class="fs-2 fw-bold text-success">{{ stats.resolved_count }}</div>
+                </div>
+                <i class="bi bi-check-circle-fill stat-icon text-success"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">处置完成率</div>
+                    <div class="fs-2 fw-bold text-info">{{ stats.completion_rate }}%</div>
+                </div>
+                <i class="bi bi-percent stat-icon text-info"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">平均响应时长</div>
+                    <div class="fs-2 fw-bold text-warning">{{ stats.avg_response_time }}小时</div>
+                </div>
+                <i class="bi bi-clock-fill stat-icon text-warning"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-lg-8 mb-3">
+        <div class="card stat-card">
+            <div class="card-header bg-white border-bottom">
+                <h5 class="mb-0"><i class="bi bi-graph-up me-2 text-primary"></i>应急响应时长趋势</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="responseTimeChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4 mb-3">
+        <div class="card stat-card h-100">
+            <div class="card-header bg-white border-bottom">
+                <h5 class="mb-0"><i class="bi bi-pie-chart me-2 text-primary"></i>事件等级分布</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="levelDistributionChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-lg-6 mb-3">
+        <div class="card stat-card">
+            <div class="card-header bg-white border-bottom">
+                <h5 class="mb-0"><i class="bi bi-bar-chart me-2 text-primary"></i>处置完成率统计（按严重程度）</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="completionByLevelChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6 mb-3">
+        <div class="card stat-card">
+            <div class="card-header bg-white border-bottom">
+                <h5 class="mb-0"><i class="bi bi-bar-chart me-2 text-primary"></i>处置完成率统计（按事件类型）</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="completionByTypeChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-lg-6 mb-3">
+        <div class="card stat-card">
+            <div class="card-header bg-white border-bottom">
+                <h5 class="mb-0"><i class="bi bi-geo-alt me-2 text-primary"></i>影响范围分析（区域分布）</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="regionDistributionChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6 mb-3">
+        <div class="card stat-card">
+            <div class="card-header bg-white border-bottom">
+                <h5 class="mb-0"><i class="bi bi-box-seam me-2 text-primary"></i>影响对象统计</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="impactObjectChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-lg-6 mb-3">
+        <div class="card stat-card">
+            <div class="card-header bg-white border-bottom">
+                <h5 class="mb-0"><i class="bi bi-lightning-charge me-2 text-primary"></i>指令响应时间分析</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="commandResponseChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6 mb-3">
+        <div class="card stat-card">
+            <div class="card-header bg-white border-bottom">
+                <h5 class="mb-0"><i class="bi bi-hourglass-split me-2 text-primary"></i>任务完成时效分析</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="taskCompletionChart" height="250"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card stat-card">
+    <div class="card-header bg-white border-bottom">
+        <h5 class="mb-0"><i class="bi bi-table me-2 text-primary"></i>事件类型统计明细</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>事件类型</th>
+                    <th>事件数</th>
+                    <th>已完成</th>
+                    <th>处置中</th>
+                    <th>完成率</th>
+                    <th>平均响应(小时)</th>
+                    <th>平均处置(小时)</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for t in type_stats %}
+                <tr>
+                    <td>{{ t.type_name }}</td>
+                    <td class="fw-bold">{{ t.total }}</td>
+                    <td><span class="text-success">{{ t.completed }}</span></td>
+                    <td><span class="text-info">{{ t.in_progress }}</span></td>
+                    <td>
+                        <div class="d-flex align-items-center">
+                            <div class="progress-bar-container flex-grow-1 me-2" style="height: 8px;">
+                                <div class="progress-bar-fill bg-success" style="width: {{ t.completion_rate }}%"></div>
+                            </div>
+                            <span class="small fw-bold">{{ t.completion_rate }}%</span>
+                        </div>
+                    </td>
+                    <td>{{ t.avg_response|floatformat:1 }}</td>
+                    <td>{{ t.avg_disposal|floatformat:1 }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-center text-muted py-4">暂无统计数据</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('periodSelect').addEventListener('change', function() {
+    window.location.href = '{% url "emergency_analysis" %}?days=' + this.value;
+});
+
+const responseTimeCtx = document.getElementById('responseTimeChart');
+new Chart(responseTimeCtx, {
+    type: 'line',
+    data: {
+        labels: {{ response_time_labels|safe }},
+        datasets: [{
+            label: '平均响应时长(小时)',
+            data: {{ response_time_data }},
+            borderColor: '#0d6efd',
+            backgroundColor: 'rgba(13, 110, 253, 0.1)',
+            fill: true,
+            tension: 0.3,
+            yAxisID: 'y'
+        }, {
+            label: '事件数量',
+            data: {{ event_count_data }},
+            borderColor: '#198754',
+            backgroundColor: 'transparent',
+            borderDash: [5, 5],
+            tension: 0.3,
+            yAxisID: 'y1'
+        }]
+    },
+    options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+            y: { beginAtZero: true, position: 'left', title: { display: true, text: '响应时长(小时)' } },
+            y1: { beginAtZero: true, position: 'right', title: { display: true, text: '事件数量' }, grid: { drawOnChartArea: false } }
+        },
+        plugins: { legend: { position: 'bottom' } }
+    }
+});
+
+const levelDistCtx = document.getElementById('levelDistributionChart');
+new Chart(levelDistCtx, {
+    type: 'doughnut',
+    data: {
+        labels: ['特别重大', '重大', '较大', '一般'],
+        datasets: [{
+            data: {{ level_distribution }},
+            backgroundColor: ['#dc3545', '#fd7e14', '#ffc107', '#198754'],
+            borderRadius: 6
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: { legend: { position: 'right' } }
+    }
+});
+
+const completionByLevelCtx = document.getElementById('completionByLevelChart');
+new Chart(completionByLevelCtx, {
+    type: 'bar',
+    data: {
+        labels: ['特别重大', '重大', '较大', '一般'],
+        datasets: [
+            { label: '已完成', data: {{ completed_by_level }}, backgroundColor: '#198754', borderRadius: 4 },
+            { label: '处置中', data: {{ in_progress_by_level }}, backgroundColor: '#0dcaf0', borderRadius: 4 },
+            { label: '未处置', data: {{ pending_by_level }}, backgroundColor: '#ffc107', borderRadius: 4 }
+        ]
+    },
+    options: {
+        responsive: true,
+        scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } },
+        plugins: { legend: { position: 'bottom' } }
+    }
+});
+
+const completionByTypeCtx = document.getElementById('completionByTypeChart');
+new Chart(completionByTypeCtx, {
+    type: 'bar',
+    data: {
+        labels: {{ type_labels|safe }},
+        datasets: [
+            { label: '完成率(%)', data: {{ completion_rate_by_type }}, backgroundColor: 'rgba(13, 110, 253, 0.7)', borderRadius: 4 }
+        ]
+    },
+    options: {
+        responsive: true,
+        scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: '完成率(%)' } } },
+        plugins: { legend: { display: false } }
+    }
+});
+
+const regionDistCtx = document.getElementById('regionDistributionChart');
+new Chart(regionDistCtx, {
+    type: 'bar',
+    data: {
+        labels: {{ region_labels|safe }},
+        datasets: [{
+            label: '受影响事件数',
+            data: {{ region_data }},
+            backgroundColor: 'rgba(13, 110, 253, 0.7)',
+            borderRadius: 4
+        }]
+    },
+    options: {
+        indexAxis: 'y',
+        responsive: true,
+        scales: { x: { beginAtZero: true } },
+        plugins: { legend: { display: false } }
+    }
+});
+
+const impactObjCtx = document.getElementById('impactObjectChart');
+new Chart(impactObjCtx, {
+    type: 'polarArea',
+    data: {
+        labels: ['受影响粮仓', '受影响批次', '受影响路线', '在途任务'],
+        datasets: [{
+            data: {{ impact_object_data }},
+            backgroundColor: [
+                'rgba(13, 110, 253, 0.7)',
+                'rgba(255, 193, 7, 0.7)',
+                'rgba(13, 202, 240, 0.7)',
+                'rgba(25, 135, 84, 0.7)'
+            ],
+            borderWidth: 0
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: { legend: { position: 'right' } }
+    }
+});
+
+const commandResponseCtx = document.getElementById('commandResponseChart');
+new Chart(commandResponseCtx, {
+    type: 'line',
+    data: {
+        labels: {{ command_labels|safe }},
+        datasets: [{
+            label: '平均指令响应时间(分钟)',
+            data: {{ command_response_data }},
+            borderColor: '#fd7e14',
+            backgroundColor: 'rgba(253, 126, 20, 0.1)',
+            fill: true,
+            tension: 0.3
+        }, {
+            label: '指令响应率(%)',
+            data: {{ command_response_rate }},
+            borderColor: '#198754',
+            backgroundColor: 'transparent',
+            borderDash: [5, 5],
+            tension: 0.3,
+            yAxisID: 'y1'
+        }]
+    },
+    options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+            y: { beginAtZero: true, position: 'left', title: { display: true, text: '响应时间(分钟)' } },
+            y1: { beginAtZero: true, max: 100, position: 'right', title: { display: true, text: '响应率(%)' }, grid: { drawOnChartArea: false } }
+        },
+        plugins: { legend: { position: 'bottom' } }
+    }
+});
+
+const taskCompletionCtx = document.getElementById('taskCompletionChart');
+new Chart(taskCompletionCtx, {
+    type: 'bar',
+    data: {
+        labels: {{ task_labels|safe }},
+        datasets: [
+            { label: '按时完成', data: {{ task_on_time }}, backgroundColor: '#198754', borderRadius: 4 },
+            { label: '超时完成', data: {{ task_overdue }}, backgroundColor: '#dc3545', borderRadius: 4 },
+            { label: '进行中', data: {{ task_in_progress }}, backgroundColor: '#0dcaf0', borderRadius: 4 }
+        ]
+    },
+    options: {
+        responsive: true,
+        scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } },
+        plugins: { legend: { position: 'bottom' } }
+    }
+});
+</script>
+{% endblock %}

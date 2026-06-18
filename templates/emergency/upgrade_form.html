@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+{% block title %}事件升级申请 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-arrow-up-circle me-2"></i>事件升级申请</h3>
+    <div>
+        {% if event %}
+        <a href="{% url 'emergency_detail' event.pk %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回事件详情</a>
+        {% else %}
+        <a href="{% url 'emergency_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回事件列表</a>
+        {% endif %}
+    </div>
+</div>
+
+{% if event %}
+<div class="card stat-card mb-4">
+    <div class="card-body">
+        <h5 class="card-title mb-3"><i class="bi bi-info-circle me-2 text-primary"></i>当前事件信息</h5>
+        <div class="row">
+            <div class="col-md-3">
+                <span class="text-muted small">事件编号：</span>
+                <span class="fw-bold">{{ event.event_code }}</span>
+            </div>
+            <div class="col-md-3">
+                <span class="text-muted small">当前等级：</span>
+                <span class="risk-badge warn-{{ event.level }}">{{ event.get_level_display }}</span>
+            </div>
+            <div class="col-md-6">
+                <span class="text-muted small">事件标题：</span>
+                <span>{{ event.title }}</span>
+            </div>
+        </div>
+        <div class="alert alert-warning mt-3 mb-0">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            <strong>注意：</strong>事件升级后，将提高应急响应级别，需要更多资源和更高层级的指挥协调。请谨慎操作。
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="card stat-card">
+    <div class="card-body">
+        <form method="post" novalidate>
+            {% csrf_token %}
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">申请升级至 <span class="text-danger">*</span></label>
+                    {{ form.target_level }}
+                    {% if form.target_level.errors %}
+                    <div class="text-danger small mt-1">{{ form.target_level.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">申请人 <span class="text-danger">*</span></label>
+                    {{ form.applicant }}
+                    {% if form.applicant.errors %}
+                    <div class="text-danger small mt-1">{{ form.applicant.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">升级原因 <span class="text-danger">*</span></label>
+                    {{ form.reason }}
+                    {% if form.reason.errors %}
+                    <div class="text-danger small mt-1">{{ form.reason.errors }}</div>
+                    {% endif %}
+                    <div class="form-text">请详细说明需要升级事件等级的原因，包括事态发展情况、影响范围扩大情况、现有处置措施不足以控制等</div>
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">当前处置情况</label>
+                    {{ form.current_situation }}
+                    {% if form.current_situation.errors %}
+                    <div class="text-danger small mt-1">{{ form.current_situation.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">需要的支援</label>
+                    {{ form.support_required }}
+                    {% if form.support_required.errors %}
+                    <div class="text-danger small mt-1">{{ form.support_required.errors }}</div>
+                    {% endif %}
+                    <div class="form-text">请说明升级后需要的额外资源、人员、技术支持等</div>
+                </div>
+            </div>
+            <div class="mt-4 d-flex justify-content-end">
+                {% if event %}
+                <a href="{% url 'emergency_detail' event.pk %}" class="btn btn-outline-secondary me-2">取消</a>
+                {% else %}
+                <a href="{% url 'emergency_list' %}" class="btn btn-outline-secondary me-2">取消</a>
+                {% endif %}
+                <button type="submit" class="btn btn-danger"><i class="bi bi-arrow-up-circle me-1"></i>提交升级申请</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

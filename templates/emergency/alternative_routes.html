@@ -1,0 +1,227 @@
+{% extends 'base.html' %}
+{% block title %}替代路线分析 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-signpost-split me-2"></i>替代路线分析</h3>
+    <div>
+        {% if event %}
+        <a href="{% url 'emergency_analyze' event.pk %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回分析结果</a>
+        {% else %}
+        <a href="{% url 'emergency_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回事件列表</a>
+        {% endif %}
+    </div>
+</div>
+
+{% if event %}
+<div class="alert alert-warning mb-4">
+    <div class="d-flex align-items-center">
+        <i class="bi bi-exclamation-triangle-fill fs-4 me-3"></i>
+        <div>
+            <h5 class="alert-heading mb-1">受影响事件</h5>
+            <p class="mb-0">{{ event.title }} - <span class="risk-badge warn-{{ event.level }}">{{ event.get_level_display }}</span></p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">可用路线</div>
+                    <div class="fs-2 fw-bold text-primary">{{ routes|length }}</div>
+                </div>
+                <i class="bi bi-signpost-split stat-icon text-primary"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">推荐路线</div>
+                    <div class="fs-2 fw-bold text-success">{{ recommended_count }}</div>
+                </div>
+                <i class="bi bi-star-fill stat-icon text-success"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">在途任务</div>
+                    <div class="fs-2 fw-bold text-warning">{{ affected_tasks|length }}</div>
+                </div>
+                <i class="bi bi-truck stat-icon text-warning"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">最短距离</div>
+                    <div class="fs-2 fw-bold text-info">{{ shortest_distance }} 公里</div>
+                </div>
+                <i class="bi bi-rulers stat-icon text-info"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card stat-card mb-4">
+    <div class="card-header bg-white border-bottom">
+        <h5 class="mb-0"><i class="bi bi-list-check me-2 text-primary"></i>替代路线对比</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>优先级</th>
+                    <th>路线名称</th>
+                    <th>起点</th>
+                    <th>终点</th>
+                    <th>距离</th>
+                    <th>预计时长</th>
+                    <th>路况</th>
+                    <th>预计成本</th>
+                    <th>风险等级</th>
+                    <th>优势</th>
+                    <th>劣势</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for route in routes %}
+                <tr class="{% if route.is_recommended %}table-success{% endif %}">
+                    <td>
+                        {% if route.is_recommended %}
+                        <span class="badge bg-success"><i class="bi bi-star-fill me-1"></i>推荐</span>
+                        {% else %}
+                        <span class="badge bg-secondary">{{ forloop.counter }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="fw-bold">{{ route.name }}</td>
+                    <td class="small">{{ route.start_point }}</td>
+                    <td class="small">{{ route.end_point }}</td>
+                    <td>{{ route.distance }} 公里</td>
+                    <td>{{ route.estimated_time }} 小时</td>
+                    <td><span class="risk-badge status-{{ route.traffic_status }}">{{ route.get_traffic_status_display }}</span></td>
+                    <td>¥{{ route.estimated_cost|floatformat:0 }}</td>
+                    <td><span class="risk-badge warn-{{ route.risk_level }}">{{ route.get_risk_level_display }}</span></td>
+                    <td class="small text-success">{{ route.advantages|default:'-' }}</td>
+                    <td class="small text-danger">{{ route.disadvantages|default:'-' }}</td>
+                    <td>
+                        {% if route.is_recommended %}
+                        <button class="btn btn-sm btn-success" onclick="selectRoute('{{ route.id }}')">
+                            <i class="bi bi-check2 me-1"></i>选择
+                        </button>
+                        {% else %}
+                        <button class="btn btn-sm btn-outline-primary" onclick="selectRoute('{{ route.id }}')">
+                            选择
+                        </button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="12" class="text-center text-muted py-4">暂无可用替代路线</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% if affected_tasks %}
+<div class="card stat-card">
+    <div class="card-header bg-white border-bottom">
+        <h5 class="mb-0"><i class="bi bi-truck me-2 text-primary"></i>可改道的在途任务</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>任务编号</th>
+                    <th>运输批次</th>
+                    <th>当前路线</th>
+                    <th>当前位置</th>
+                    <th>原预计到达</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for task in affected_tasks %}
+                <tr>
+                    <td class="fw-bold">{{ task.task_code }}</td>
+                    <td>{{ task.batch.batch_no }}</td>
+                    <td class="small">{{ task.route.name|default:'-' }}</td>
+                    <td class="small">{{ task.current_location|default:'运输中' }}</td>
+                    <td class="small">{{ task.estimated_arrival|date:'m-d H:i' }}</td>
+                    <td><span class="risk-badge task-{{ task.status }}">{{ task.get_status_display }}</span></td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-info" onclick="redirectRoute('{{ task.id }}')">
+                            <i class="bi bi-signpost-split me-1"></i>改道
+                        </button>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" class="text-center text-muted py-3">暂无在途任务</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="modal fade" id="selectRouteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">确认选择路线</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" id="selectRouteForm">
+                {% csrf_token %}
+                <input type="hidden" name="route_id" id="selectedRouteId">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">操作人 <span class="text-danger">*</span></label>
+                        <input type="text" name="operator" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">改道原因</label>
+                        <textarea name="reason" class="form-control" rows="3" placeholder="请说明选择此路线的原因"></textarea>
+                    </div>
+                    <div class="alert alert-info mb-0">
+                        <i class="bi bi-info-circle me-2"></i>确认后将更新相关运输任务的路线信息，并通知相关人员。
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">确认选择</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function selectRoute(routeId) {
+    document.getElementById('selectedRouteId').value = routeId;
+    const modal = new bootstrap.Modal(document.getElementById('selectRouteModal'));
+    modal.show();
+}
+
+function redirectRoute(taskId) {
+    alert('即将为任务 ' + taskId + ' 重新规划路线');
+}
+</script>
+{% endblock %}

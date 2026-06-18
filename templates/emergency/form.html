@@ -1,0 +1,101 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }} - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-exclamation-triangle-fill me-2"></i>{{ title }}</h3>
+    <a href="{% url 'emergency_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回列表</a>
+</div>
+
+<div class="card stat-card">
+    <div class="card-body">
+        <form method="post" novalidate>
+            {% csrf_token %}
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">事件标题 <span class="text-danger">*</span></label>
+                    {{ form.title }}
+                    {% if form.title.errors %}
+                    <div class="text-danger small mt-1">{{ form.title.errors }}</div>
+                    {% endif %}
+                    <div class="form-text">请简要描述突发事件的核心内容</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">事件类型 <span class="text-danger">*</span></label>
+                    {{ form.event_type }}
+                    {% if form.event_type.errors %}
+                    <div class="text-danger small mt-1">{{ form.event_type.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">事件等级 <span class="text-danger">*</span></label>
+                    {{ form.level }}
+                    {% if form.level.errors %}
+                    <div class="text-danger small mt-1">{{ form.level.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">发生时间 <span class="text-danger">*</span></label>
+                    {{ form.happen_time }}
+                    {% if form.happen_time.errors %}
+                    <div class="text-danger small mt-1">{{ form.happen_time.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">发生位置</label>
+                    {{ form.location }}
+                    {% if form.location.errors %}
+                    <div class="text-danger small mt-1">{{ form.location.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">上报人 <span class="text-danger">*</span></label>
+                    {{ form.reporter }}
+                    {% if form.reporter.errors %}
+                    <div class="text-danger small mt-1">{{ form.reporter.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">事件描述 <span class="text-danger">*</span></label>
+                    {{ form.description }}
+                    {% if form.description.errors %}
+                    <div class="text-danger small mt-1">{{ form.description.errors }}</div>
+                    {% endif %}
+                    <div class="form-text">请详细描述突发事件的情况，包括发生原因、影响范围等</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">影响人数</label>
+                    {{ form.affected_people }}
+                    {% if form.affected_people.errors %}
+                    <div class="text-danger small mt-1">{{ form.affected_people.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">预估经济损失（万元）</label>
+                    {{ form.estimated_loss }}
+                    {% if form.estimated_loss.errors %}
+                    <div class="text-danger small mt-1">{{ form.estimated_loss.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">已采取的措施</label>
+                    {{ form.measures_taken }}
+                    {% if form.measures_taken.errors %}
+                    <div class="text-danger small mt-1">{{ form.measures_taken.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-12">
+                    <label class="form-label">需要的支援</label>
+                    {{ form.support_needed }}
+                    {% if form.support_needed.errors %}
+                    <div class="text-danger small mt-1">{{ form.support_needed.errors }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="mt-4 d-flex justify-content-end">
+                <a href="{% url 'emergency_list' %}" class="btn btn-outline-secondary me-2">取消</a>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-save me-1"></i>提交上报</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
