@@ -1,0 +1,281 @@
+{% extends 'base.html' %}
+{% block title %}预警处置看板 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<h3 class="page-title"><i class="bi bi-bar-chart-steps me-2"></i>预警处置看板</h3>
+
+<div class="card stat-card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small text-muted">开始日期</label>
+                <input type="date" name="start_date" value="{{ start_date }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted">结束日期</label>
+                <input type="date" name="end_date" value="{{ end_date }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted">趋势天数</label>
+                <select name="days" class="form-select form-select-sm">
+                    <option value="7" {% if days == 7 %}selected{% endif %}>最近7天</option>
+                    <option value="14" {% if days == 14 %}selected{% endif %}>最近14天</option>
+                    <option value="30" {% if days == 30 %}selected{% endif %}>最近30天</option>
+                    <option value="90" {% if days == 90 %}selected{% endif %}>最近90天</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-primary btn-sm w-100"><i class="bi bi-search me-1"></i>查询</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-2 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">预警总数</div>
+                    <div class="fs-2 fw-bold text-primary">{{ overview.total_warnings }}</div>
+                </div>
+                <i class="bi bi-bell-fill stat-icon text-primary"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">一级预警</div>
+                    <div class="fs-2 fw-bold text-danger">{{ overview.level1_count }}</div>
+                </div>
+                <i class="bi bi-exclamation-octagon-fill stat-icon text-danger"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">二级预警</div>
+                    <div class="fs-2 fw-bold" style="color:#d9480f;">{{ overview.level2_count }}</div>
+                </div>
+                <i class="bi bi-exclamation-triangle-fill stat-icon" style="color:#d9480f;"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">三级预警</div>
+                    <div class="fs-2 fw-bold" style="color:#f59f00;">{{ overview.level3_count }}</div>
+                </div>
+                <i class="bi bi-exclamation-circle-fill stat-icon" style="color:#f59f00;"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">处置中</div>
+                    <div class="fs-2 fw-bold text-info">{{ overview.in_progress_count }}</div>
+                </div>
+                <i class="bi bi-hourglass-split stat-icon text-info"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">闭环率</div>
+                    <div class="fs-2 fw-bold text-success">{{ overview.closure_rate }}%</div>
+                </div>
+                <i class="bi bi-check-circle-fill stat-icon text-success"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">处置任务总数</div>
+                    <div class="fs-3 fw-bold text-primary">{{ overview.total_tasks }}</div>
+                </div>
+                <i class="bi bi-list-check stat-icon text-primary"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">任务处理中</div>
+                    <div class="fs-3 fw-bold text-info">{{ overview.tasks_in_progress }}</div>
+                </div>
+                <i class="bi bi-gear-fill stat-icon text-info"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">待复查</div>
+                    <div class="fs-3 fw-bold" style="color:#e67700;">{{ overview.tasks_reviewing }}</div>
+                </div>
+                <i class="bi bi-eye-fill stat-icon" style="color:#e67700;"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="text-muted small">超时预警</div>
+                    <div class="fs-3 fw-bold text-danger">{{ overview.overdue_count }}</div>
+                </div>
+                <i class="bi bi-clock-fill stat-icon text-danger"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-7 mb-3">
+        <div class="chart-container">
+            <h5 class="mb-3"><i class="bi bi-graph-up me-2 text-primary"></i>预警趋势（近{{ days }}天）</h5>
+            <canvas id="trendChart" height="200"></canvas>
+        </div>
+    </div>
+    <div class="col-md-5 mb-3">
+        <div class="chart-container">
+            <h5 class="mb-3"><i class="bi bi-pie-chart me-2 text-primary"></i>预警等级分布</h5>
+            <canvas id="levelPieChart" height="200"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-8 mb-3">
+        <div class="chart-container">
+            <h5 class="mb-3"><i class="bi bi-bar-chart-line me-2 text-primary"></i>各粮仓预警分布</h5>
+            <canvas id="granaryChart" height="220"></canvas>
+        </div>
+    </div>
+    <div class="col-md-4 mb-3">
+        <div class="card stat-card">
+            <div class="card-header bg-white border-bottom">
+                <h5 class="mb-0"><i class="bi bi-trophy me-2 text-primary"></i>处置效率统计</h5>
+            </div>
+            <div class="card-body">
+                <div class="text-center mb-3">
+                    <div class="display-4 fw-bold text-success">{{ efficiency.on_time_rate }}%</div>
+                    <div class="text-muted small">按时完成率</div>
+                </div>
+                <table class="table table-borderless table-sm mb-0">
+                    <tr><td class="text-muted">已闭环任务数</td><td class="fw-bold text-end">{{ efficiency.total_closed }}</td></tr>
+                    <tr><td class="text-muted">按时完成数</td><td class="fw-bold text-end text-success">{{ efficiency.on_time_count }}</td></tr>
+                    <tr><td class="text-muted">超时完成数</td><td class="fw-bold text-end text-danger">{{ efficiency.overdue_count }}</td></tr>
+                    <tr><td class="text-muted">平均处置时长</td><td class="fw-bold text-end">{{ efficiency.avg_hours }} 小时</td></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card stat-card">
+    <div class="card-header bg-white border-bottom">
+        <h5 class="mb-0"><i class="bi bi-list-ol me-2 text-primary"></i>粮仓预警明细</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr><th>粮仓编号</th><th>粮仓名称</th><th>一级预警</th><th>二级预警</th><th>三级预警</th><th>合计</th></tr>
+                </thead>
+                <tbody>
+                {% for g in by_granary %}
+                <tr>
+                    <td><a href="{% url 'granary_detail' g.id %}">{{ g.code }}</a></td>
+                    <td>{{ g.name }}</td>
+                    <td><span class="badge bg-danger">{{ g.level1 }}</span></td>
+                    <td><span class="badge" style="background:#d9480f;">{{ g.level2 }}</span></td>
+                    <td><span class="badge bg-warning">{{ g.level3 }}</span></td>
+                    <td class="fw-bold">{{ g.total }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-muted py-4">暂无数据</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function loadTrendChart() {
+    const params = new URLSearchParams(window.location.search);
+    const days = params.get('days') || 30;
+    fetch('/api/warning-trend/?days=' + days).then(r => r.json()).then(data => {
+        const ctx = document.getElementById('trendChart');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.labels,
+                datasets: [
+                    { label: '一级预警', data: data.level1, borderColor: '#dc3545', backgroundColor: 'rgba(220,53,69,0.1)', fill: true, tension: 0.3, spanGaps: true },
+                    { label: '二级预警', data: data.level2, borderColor: '#fd7e14', backgroundColor: 'rgba(253,126,20,0.1)', fill: true, tension: 0.3, spanGaps: true },
+                    { label: '三级预警', data: data.level3, borderColor: '#ffc107', backgroundColor: 'rgba(255,193,7,0.1)', fill: true, tension: 0.3, spanGaps: true },
+                ]
+            },
+            options: { responsive: true, scales: { y: { beginAtZero: true } }, plugins: { legend: { position: 'bottom' } } }
+        });
+    });
+}
+loadTrendChart();
+
+const levelData = {
+    labels: ['一级预警', '二级预警', '三级预警'],
+    datasets: [{
+        data: [{{ overview.level1_count }}, {{ overview.level2_count }}, {{ overview.level3_count }}],
+        backgroundColor: ['#dc3545', '#fd7e14', '#ffc107']
+    }]
+};
+new Chart(document.getElementById('levelPieChart'), {
+    type: 'doughnut',
+    data: levelData,
+    options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+});
+
+function loadGranaryChart() {
+    const params = new URLSearchParams(window.location.search);
+    fetch('/api/warning-by-granary/?' + params.toString()).then(r => r.json()).then(data => {
+        new Chart(document.getElementById('granaryChart'), {
+            type: 'bar',
+            data: {
+                labels: data.labels,
+                datasets: [
+                    { label: '一级', data: data.level1, backgroundColor: '#dc3545', borderRadius: 4 },
+                    { label: '二级', data: data.level2, backgroundColor: '#fd7e14', borderRadius: 4 },
+                    { label: '三级', data: data.level3, backgroundColor: '#ffc107', borderRadius: 4 },
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } },
+                plugins: { legend: { position: 'bottom' } }
+            }
+        });
+    });
+}
+loadGranaryChart();
+</script>
+{% endblock %}

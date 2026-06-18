@@ -12,13 +12,19 @@ import json
 
 from .models import (
     GrainType, Granary, TemperatureHumidityLog,
-    VentilationLog, PestInspection, RiskAssessment
+    VentilationLog, PestInspection, RiskAssessment,
+    Warning, DisposalTask, DisposalProgressLog
 )
 from .forms import (
     GrainTypeForm, GranaryForm, TemperatureHumidityLogForm,
-    VentilationLogForm, PestInspectionForm, RiskProcessForm
+    VentilationLogForm, PestInspectionForm, RiskProcessForm,
+    WarningCreateForm, DisposalTaskAssignForm, DisposalProgressForm,
+    DisposalSubmitForm, DisposalReviewForm, DisposalArchiveForm, WarningFilterForm
 )
-from .services import RiskCalculator, recalculate_risks_after_ventilation, recalculate_risks_for_granary
+from .services import (
+    RiskCalculator, recalculate_risks_after_ventilation, recalculate_risks_for_granary,
+    WarningService, DisposalService, WarningStatisticsService
+)
 
 
 def dashboard(request):
@@ -692,4 +698,290 @@ def process_risk(request, pk):
     return render(request, 'risk/process.html', {
         'form': form,
         'assessment': assessment,
+    })
+
+
+# -------------------- Warning Views --------------------
+class WarningListView(ListView):
+    model = Warning
+    template_name = 'warning/list.html'
+    context_object_name = 'warnings'
+    ordering = ['-warning_time']
+    paginate_by = 30
+
+    def get_queryset(self):
+        qs = super().get_queryset().select_related('granary')
+        level = self.request.GET.get('level')
+        status = self.request.GET.get('status')
+        granary_id = self.request.GET.get('granary')
+        start_date = self.request.GET.get('start_date')
+        end_date = self.request.GET.get('end_date')
+        if level:
+            qs = qs.filter(warning_level=level)
+        if status:
+            qs = qs.filter(status=status)
+        if granary_id:
+            qs = qs.filter(granary_id=granary_id)
+        if start_date:
+            qs = qs.filter(warning_time__date__gte=start_date)
+        if end_date:
+            qs = qs.filter(warning_time__date__lte=end_date)
+        return qs
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        filter_form = WarningFilterForm(self.request.GET or None)
+        ctx['filter_form'] = filter_form
+        ctx['today'] = date.today()
+        return ctx
+
+
+class WarningDetailView(DetailView):
+    model = Warning
+    template_name = 'warning/detail.html'
+    context_object_name = 'warning'
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['tasks'] = self.object.disposal_tasks.select_related('warning').order_by('-assigned_time')
+        ctx['notify_logs'] = self.object.notify_logs.all()[:20]
+        return ctx
+
+
+def warning_create(request):
+    if request.method == 'POST':
+        form = WarningCreateForm(request.POST)
+        if form.is_valid():
+            warning = form.save(commit=False)
+            warning.trigger_type = 'manual'
+            warning.save()
+            WarningService.create_notify_log(warning)
+            messages.success(request, '手动预警创建成功')
+            return redirect('warning_detail', pk=warning.pk)
+    else:
+        form = WarningCreateForm()
+    return render(request, 'warning/form.html', {'form': form, 'title': '创建手动预警'})
+
+
+def generate_warnings(request):
+    target_date = date.today()
+    date_str = request.POST.get('warn_date')
+    if date_str:
+        try:
+            from datetime import datetime
+            target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except Exception:
+            target_date = date.today()
+    created = WarningService.generate_warnings_for_date(target_date)
+    messages.success(request, f'成功生成 {len(created)} 条预警记录（{target_date}）')
+    return redirect('warning_list')
+
+
+def check_overdue_warnings(request):
+    overdue_w, overdue_t = WarningService.check_and_update_overdue()
+    messages.success(request, f'检测完成：{overdue_w} 条预警超时，{overdue_t} 个任务超时')
+    return redirect('warning_list')
+
+
+# -------------------- DisposalTask Views --------------------
+def task_assign(request, warning_pk):
+    warning = get_object_or_404(Warning, pk=warning_pk)
+    if request.method == 'POST':
+        form = DisposalTaskAssignForm(request.POST, warning=warning)
+        if form.is_valid():
+            task = DisposalService.assign_task(
+                warning=warning,
+                task_title=form.cleaned_data['task_title'],
+                assignee=form.cleaned_data['assignee'],
+                assigner=form.cleaned_data.get('assigner', '系统'),
+                deadline=form.cleaned_data['deadline'],
+                task_description=form.cleaned_data.get('task_description'),
+                priority=form.cleaned_data.get('priority'),
+            )
+            messages.success(request, f'处置任务已分派给 {task.assignee}')
+            return redirect('task_detail', pk=task.pk)
+    else:
+        form = DisposalTaskAssignForm(warning=warning)
+    return render(request, 'warning/task_assign.html', {'form': form, 'warning': warning})
+
+
+class TaskDetailView(DetailView):
+    model = DisposalTask
+    template_name = 'warning/task_detail.html'
+    context_object_name = 'task'
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['progress_logs'] = self.object.progress_logs.all()
+        ctx['progress_form'] = DisposalProgressForm()
+        ctx['submit_form'] = DisposalSubmitForm()
+        ctx['review_form'] = DisposalReviewForm()
+        ctx['archive_form'] = DisposalArchiveForm()
+        return ctx
+
+
+def task_update_progress(request, pk):
+    task = get_object_or_404(DisposalTask, pk=pk)
+    if request.method == 'POST':
+        form = DisposalProgressForm(request.POST)
+        if form.is_valid():
+            DisposalService.update_progress(
+                task=task,
+                progress_percent=form.cleaned_data['progress_percent'],
+                description=form.cleaned_data['progress_description'],
+                operator=form.cleaned_data['operator'],
+                remark=form.cleaned_data.get('remark'),
+            )
+            messages.success(request, '进度更新成功')
+            return redirect('task_detail', pk=task.pk)
+    return redirect('task_detail', pk=task.pk)
+
+
+def task_submit_review(request, pk):
+    task = get_object_or_404(DisposalTask, pk=pk)
+    if request.method == 'POST':
+        form = DisposalSubmitForm(request.POST)
+        if form.is_valid():
+            DisposalService.submit_for_review(
+                task=task,
+                disposal_measures=form.cleaned_data['disposal_measures'],
+                disposal_result=form.cleaned_data['disposal_result'],
+                operator=form.cleaned_data['operator'],
+                attachment=form.cleaned_data.get('disposal_attachment'),
+            )
+            messages.success(request, '已提交复查')
+            return redirect('task_detail', pk=task.pk)
+    return redirect('task_detail', pk=task.pk)
+
+
+def task_review(request, pk):
+    task = get_object_or_404(DisposalTask, pk=pk)
+    if request.method == 'POST':
+        form = DisposalReviewForm(request.POST)
+        if form.is_valid():
+            passed = form.cleaned_data['passed'] == 'True'
+            DisposalService.review_task(
+                task=task,
+                reviewer=form.cleaned_data['reviewer'],
+                passed=passed,
+                opinion=form.cleaned_data.get('opinion'),
+            )
+            messages.success(request, f'复查{"通过" if passed else "不通过"}')
+            return redirect('task_detail', pk=task.pk)
+    return redirect('task_detail', pk=task.pk)
+
+
+def task_redo(request, pk):
+    task = get_object_or_404(DisposalTask, pk=pk)
+    if request.method == 'POST':
+        operator = request.POST.get('operator', '系统')
+        DisposalService.redo_task(task, operator)
+        messages.success(request, '任务已重新开启处置')
+    return redirect('task_detail', pk=task.pk)
+
+
+def task_archive(request, pk):
+    task = get_object_or_404(DisposalTask, pk=pk)
+    if request.method == 'POST':
+        form = DisposalArchiveForm(request.POST)
+        if form.is_valid():
+            try:
+                DisposalService.archive_task(
+                    task=task,
+                    archived_by=form.cleaned_data['archived_by'],
+                    remark=form.cleaned_data.get('remark'),
+                )
+                messages.success(request, '任务已归档')
+            except ValueError as e:
+                messages.error(request, str(e))
+            return redirect('task_detail', pk=task.pk)
+    return redirect('task_detail', pk=task.pk)
+
+
+class TaskListView(ListView):
+    model = DisposalTask
+    template_name = 'warning/task_list.html'
+    context_object_name = 'tasks'
+    ordering = ['-assigned_time']
+    paginate_by = 30
+
+    def get_queryset(self):
+        qs = super().get_queryset().select_related('warning__granary')
+        status = self.request.GET.get('status')
+        assignee = self.request.GET.get('assignee')
+        if status:
+            qs = qs.filter(status=status)
+        if assignee:
+            qs = qs.filter(assignee__icontains=assignee)
+        return qs
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['selected_status'] = self.request.GET.get('status', '')
+        ctx['selected_assignee'] = self.request.GET.get('assignee', '')
+        return ctx
+
+
+# -------------------- Warning Dashboard Views --------------------
+def warning_dashboard(request):
+    start_date_str = request.GET.get('start_date')
+    end_date_str = request.GET.get('end_date')
+    days = int(request.GET.get('days', 30))
+
+    start_date = None
+    end_date = None
+    if start_date_str:
+        from datetime import datetime
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+    if end_date_str:
+        from datetime import datetime
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+
+    overview = WarningStatisticsService.get_overview_stats(start_date, end_date)
+    by_granary = WarningStatisticsService.get_by_granary(start_date, end_date)
+    trend = WarningStatisticsService.get_by_date_trend(days)
+    efficiency = WarningStatisticsService.get_disposal_efficiency(start_date, end_date)
+
+    return render(request, 'warning/dashboard.html', {
+        'overview': overview,
+        'by_granary': by_granary,
+        'trend': trend,
+        'efficiency': efficiency,
+        'start_date': start_date_str or '',
+        'end_date': end_date_str or '',
+        'days': days,
+    })
+
+
+def warning_trend_api(request):
+    days = int(request.GET.get('days', 30))
+    trend = WarningStatisticsService.get_by_date_trend(days)
+    return JsonResponse({
+        'labels': [t['label'] for t in trend],
+        'level1': [t['level1'] for t in trend],
+        'level2': [t['level2'] for t in trend],
+        'level3': [t['level3'] for t in trend],
+        'total': [t['total'] for t in trend],
+    })
+
+
+def warning_by_granary_api(request):
+    start_date_str = request.GET.get('start_date')
+    end_date_str = request.GET.get('end_date')
+    start_date = None
+    end_date = None
+    if start_date_str:
+        from datetime import datetime
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+    if end_date_str:
+        from datetime import datetime
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+
+    data = WarningStatisticsService.get_by_granary(start_date, end_date)
+    return JsonResponse({
+        'labels': [d['code'] for d in data],
+        'level1': [d['level1'] for d in data],
+        'level2': [d['level2'] for d in data],
+        'level3': [d['level3'] for d in data],
+        'total': [d['total'] for d in data],
     })

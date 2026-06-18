@@ -1,0 +1,216 @@
+{% extends 'base.html' %}
+{% block title %}任务详情 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-clipboard-check me-2"></i>处置任务详情</h3>
+    <div>
+        <a href="{% url 'task_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>任务列表</a>
+        <a href="{% url 'warning_detail' task.warning_id %}" class="btn btn-outline-info ms-2"><i class="bi bi-bell me-1"></i>预警详情</a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-7">
+        <div class="card stat-card mb-4">
+            <div class="card-body">
+                <h5 class="card-title mb-3"><i class="bi bi-info-circle me-2 text-primary"></i>任务信息</h5>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="mb-0">{{ task.task_title }}</h5>
+                        <span class="risk-badge task-{{ task.status }}">{{ task.get_status_display }}</span>
+                    </div>
+                    <div class="progress mb-2" style="height:12px;">
+                        <div class="progress-bar {% if task.progress >= 80 %}bg-success{% elif task.progress >= 50 %}bg-info{% else %}bg-warning{% endif %}" role="progressbar" style="width: {{ task.progress }}%"></div>
+                    </div>
+                    <div class="d-flex justify-content-between small text-muted">
+                        <span>处理进度: {{ task.progress }}%</span>
+                        <span>优先级: <span class="risk-badge priority-{{ task.priority }}">{{ task.get_priority_display }}</span></span>
+                    </div>
+                </div>
+                <table class="table table-borderless mb-0">
+                    <tr><th style="width:120px" class="text-muted">关联预警</th><td><a href="{% url 'warning_detail' task.warning_id %}">{{ task.warning.granary.code }} - {{ task.warning.get_warning_level_display }}</a></td></tr>
+                    <tr><th class="text-muted">任务描述</th><td>{{ task.task_description|default:'-' }}</td></tr>
+                    <tr><th class="text-muted">处置负责人</th><td>{{ task.assignee }}</td></tr>
+                    <tr><th class="text-muted">任务分派人</th><td>{{ task.assigner|default:'系统' }}</td></tr>
+                    <tr><th class="text-muted">分派时间</th><td>{{ task.assigned_time|date:'Y-m-d H:i' }}</td></tr>
+                    <tr><th class="text-muted">要求完成时间</th>
+                        <td>
+                            {% if task.is_overdue and task.status != 'closed' %}
+                            <span class="text-danger fw-bold">{{ task.deadline|date:'Y-m-d H:i' }} (已超时)</span>
+                            {% else %}
+                            {{ task.deadline|date:'Y-m-d H:i' }}
+                            {% if task.status != 'closed' %}
+                            <small class="text-muted ms-2">剩余 {{ task.get_remaining_hours }} 小时</small>
+                            {% endif %}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr><th class="text-muted">实际完成时间</th><td>{{ task.completed_time|date:'Y-m-d H:i'|default:'-' }}</td></tr>
+                    <tr><th class="text-muted">处置措施</th><td>{{ task.disposal_measures|default:'-'|linebreaks }}</td></tr>
+                    <tr><th class="text-muted">处置结果</th><td>{{ task.disposal_result|default:'-'|linebreaks }}</td></tr>
+                    <tr><th class="text-muted">附件说明</th><td>{{ task.disposal_attachment|default:'-' }}</td></tr>
+                </table>
+            </div>
+        </div>
+
+        {% if task.reviewer or task.review_opinion %}
+        <div class="card stat-card mb-4">
+            <div class="card-body">
+                <h5 class="card-title mb-3"><i class="bi bi-check2-square me-2 text-primary"></i>复查信息</h5>
+                <table class="table table-borderless mb-0">
+                    <tr><th style="width:120px" class="text-muted">复查人</th><td>{{ task.reviewer|default:'-' }}</td></tr>
+                    <tr><th class="text-muted">复查时间</th><td>{{ task.review_time|date:'Y-m-d H:i'|default:'-' }}</td></tr>
+                    <tr><th class="text-muted">复查结论</th><td>{% if task.review_passed %}<span class="badge bg-success">通过</span>{% else %}<span class="badge bg-danger">不通过</span>{% endif %}</td></tr>
+                    <tr><th class="text-muted">复查意见</th><td>{{ task.review_opinion|default:'-'|linebreaks }}</td></tr>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if task.archived_by %}
+        <div class="card stat-card mb-4">
+            <div class="card-body">
+                <h5 class="card-title mb-3"><i class="bi bi-archive me-2 text-primary"></i>归档信息</h5>
+                <table class="table table-borderless mb-0">
+                    <tr><th style="width:120px" class="text-muted">归档人</th><td>{{ task.archived_by }}</td></tr>
+                    <tr><th class="text-muted">归档时间</th><td>{{ task.archived_time|date:'Y-m-d H:i' }}</td></tr>
+                    <tr><th class="text-muted">归档备注</th><td>{{ task.archive_remark|default:'-'|linebreaks }}</td></tr>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="col-md-5">
+        <div class="card stat-card mb-4">
+            <div class="card-body">
+                <h5 class="card-title mb-3"><i class="bi bi-tools me-2 text-primary"></i>操作</h5>
+                {% if task.status in 'assigned,in_progress' %}
+                <div class="mb-4">
+                    <h6 class="mb-2"><i class="bi bi-pencil-square me-1"></i>更新进度</h6>
+                    <form method="post" action="{% url 'task_update_progress' task.pk %}">
+                        {% csrf_token %}
+                        <div class="mb-2">
+                            <label class="form-label small">当前进度(%)</label>
+                            {{ progress_form.progress_percent }}
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">进度说明</label>
+                            {{ progress_form.progress_description }}
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">操作人</label>
+                            {{ progress_form.operator }}
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">备注</label>
+                            {{ progress_form.remark }}
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm w-100"><i class="bi bi-arrow-up me-1"></i>更新进度</button>
+                    </form>
+                </div>
+                <hr>
+                <div>
+                    <h6 class="mb-2"><i class="bi bi-send-check me-1"></i>提交复查</h6>
+                    <form method="post" action="{% url 'task_submit_review' task.pk %}">
+                        {% csrf_token %}
+                        <div class="mb-2">
+                            <label class="form-label small">处置措施 *</label>
+                            {{ submit_form.disposal_measures }}
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">处置结果 *</label>
+                            {{ submit_form.disposal_result }}
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">附件说明</label>
+                            {{ submit_form.disposal_attachment }}
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">提交人</label>
+                            {{ submit_form.operator }}
+                        </div>
+                        <button type="submit" class="btn btn-success btn-sm w-100"><i class="bi bi-send me-1"></i>提交复查</button>
+                    </form>
+                </div>
+                {% elif task.status == 'submitted' %}
+                <div class="mb-4">
+                    <h6 class="mb-2"><i class="bi bi-check2-square me-1"></i>复查</h6>
+                    <form method="post" action="{% url 'task_review' task.pk %}">
+                        {% csrf_token %}
+                        <div class="mb-2">
+                            <label class="form-label small">复查人 *</label>
+                            {{ review_form.reviewer }}
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">复查结论</label><br>
+                            {% for value, label in review_form.fields.passed.choices %}
+                            <div class="form-check form-check-inline">
+                                <input type="radio" name="passed" value="{{ value }}" id="id_passed_{{ forloop.counter0 }}" class="form-check-input" {% if forloop.first %}checked{% endif %}>
+                                <label for="id_passed_{{ forloop.counter0 }}" class="form-check-label">{{ label }}</label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">复查意见</label>
+                            {{ review_form.opinion }}
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm w-100"><i class="bi bi-check2 me-1"></i>提交复查结果</button>
+                    </form>
+                </div>
+                {% elif task.status == 'review_failed' %}
+                <form method="post" action="{% url 'task_redo' task.pk %}" class="mb-3">
+                    {% csrf_token %}
+                    <div class="mb-2">
+                        <label class="form-label small">操作人</label>
+                        <input type="text" name="operator" class="form-control form-control-sm" placeholder="请输入操作人">
+                    </div>
+                    <button type="submit" class="btn btn-warning btn-sm w-100"><i class="bi bi-arrow-repeat me-1"></i>重新处置</button>
+                </form>
+                {% elif task.status == 'closed' and not task.archived_by %}
+                <div>
+                    <h6 class="mb-2"><i class="bi bi-archive me-1"></i>归档</h6>
+                    <form method="post" action="{% url 'task_archive' task.pk %}">
+                        {% csrf_token %}
+                        <div class="mb-2">
+                            <label class="form-label small">归档人 *</label>
+                            {{ archive_form.archived_by }}
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">归档备注</label>
+                            {{ archive_form.remark }}
+                        </div>
+                        <button type="submit" class="btn btn-secondary btn-sm w-100"><i class="bi bi-archive me-1"></i>归档</button>
+                    </form>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-lock fs-1"></i>
+                    <p class="mt-2 mb-0">当前状态无可用操作</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card stat-card">
+            <div class="card-body">
+                <h5 class="card-title mb-3"><i class="bi bi-clock-history me-2 text-primary"></i>进度记录</h5>
+                <div>
+                    {% for log in progress_logs %}
+                    <div class="timeline-item">
+                        <div class="small text-muted">{{ log.operate_time|date:'Y-m-d H:i' }} · {{ log.operator }}</div>
+                        <div class="fw-bold">进度 {{ log.progress_percent }}%</div>
+                        <div class="small">{{ log.progress_description }}</div>
+                        {% if log.remark %}
+                        <div class="small text-muted">备注: {{ log.remark }}</div>
+                        {% endif %}
+                    </div>
+                    {% empty %}
+                    <div class="text-center text-muted py-3 small">暂无进度记录</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

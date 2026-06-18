@@ -1,0 +1,105 @@
+{% extends 'base.html' %}
+{% block title %}处置任务 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-list-check me-2"></i>处置任务</h3>
+    <a href="{% url 'warning_list' %}" class="btn btn-outline-secondary"><i class="bi bi-bell me-1"></i>预警列表</a>
+</div>
+
+<div class="card stat-card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small text-muted">任务状态</label>
+                <select name="status" class="form-select form-select-sm">
+                    <option value="">全部状态</option>
+                    <option value="assigned" {% if selected_status == 'assigned' %}selected{% endif %}>已分派</option>
+                    <option value="in_progress" {% if selected_status == 'in_progress' %}selected{% endif %}>处理中</option>
+                    <option value="submitted" {% if selected_status == 'submitted' %}selected{% endif %}>待复查</option>
+                    <option value="review_failed" {% if selected_status == 'review_failed' %}selected{% endif %}>复查不通过</option>
+                    <option value="closed" {% if selected_status == 'closed' %}selected{% endif %}>已闭环</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted">处置负责人</label>
+                <input type="text" name="assignee" value="{{ selected_assignee }}" class="form-control form-control-sm" placeholder="输入负责人姓名">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary btn-sm w-100"><i class="bi bi-funnel me-1"></i>筛选</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card stat-card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>分派时间</th>
+                    <th>任务标题</th>
+                    <th>预警粮仓</th>
+                    <th>负责人</th>
+                    <th>优先级</th>
+                    <th>状态</th>
+                    <th>进度</th>
+                    <th>截止时间</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for t in tasks %}
+                <tr>
+                    <td class="small">{{ t.assigned_time|date:'Y-m-d H:i' }}</td>
+                    <td class="small" style="max-width:200px;">{{ t.task_title|truncatechars:30 }}</td>
+                    <td><a href="{% url 'warning_detail' t.warning_id %}">{{ t.warning.granary.code }}</a></td>
+                    <td>{{ t.assignee }}</td>
+                    <td><span class="risk-badge priority-{{ t.priority }}">{{ t.get_priority_display }}</span></td>
+                    <td><span class="risk-badge task-{{ t.status }}">{{ t.get_status_display }}</span></td>
+                    <td style="width:120px;">
+                        <div class="progress" style="height:6px;">
+                            <div class="progress-bar {% if t.progress >= 80 %}bg-success{% elif t.progress >= 50 %}bg-info{% else %}bg-warning{% endif %}" style="width:{{ t.progress }}%"></div>
+                        </div>
+                        <small class="text-muted">{{ t.progress }}%</small>
+                    </td>
+                    <td>
+                        <span class="{% if t.is_overdue and t.status != 'closed' %}text-danger fw-bold{% endif %} small">
+                            {{ t.deadline|date:'m-d H:i' }}
+                            {% if t.is_overdue and t.status != 'closed' %}
+                            <br><span class="badge bg-danger">已超时</span>
+                            {% endif %}
+                        </span>
+                    </td>
+                    <td><a href="{% url 'task_detail' t.pk %}" class="btn btn-sm btn-outline-primary">详情</a></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="9" class="text-center text-muted py-4">暂无处置任务</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% if is_paginated %}
+    <div class="card-footer bg-white border-top">
+        <nav>
+            <ul class="pagination pagination-sm mb-0 justify-content-center">
+                {% if page_obj.has_previous %}
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">上一页</a></li>
+                {% endif %}
+                {% for p in page_obj.paginator.page_range %}
+                {% if p == page_obj.number %}
+                <li class="page-item active"><span class="page-link">{{ p }}</span></li>
+                {% else %}
+                <li class="page-item"><a class="page-link" href="?page={{ p }}">{{ p }}</a></li>
+                {% endif %}
+                {% endfor %}
+                {% if page_obj.has_next %}
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">下一页</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

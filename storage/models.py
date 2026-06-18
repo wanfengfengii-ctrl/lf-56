@@ -1,7 +1,7 @@
 from django.db import models
 from django.core.exceptions import ValidationError
 from django.utils import timezone
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 
 class GrainType(models.Model):
@@ -243,3 +243,191 @@ class RiskAssessment(models.Model):
             return 0.95
         else:
             return 1.2
+
+
+class Warning(models.Model):
+    LEVEL_CHOICES = (
+        ('level1', '一级预警（红色）'),
+        ('level2', '二级预警（橙色）'),
+        ('level3', '三级预警（黄色）'),
+    )
+    TRIGGER_TYPE_CHOICES = (
+        ('auto', '自动触发'),
+        ('manual', '手动触发'),
+    )
+    NOTIFY_METHOD_CHOICES = (
+        ('system', '系统消息'),
+        ('sms', '短信通知'),
+        ('email', '邮件通知'),
+        ('all', '全部方式'),
+    )
+    STATUS_CHOICES = (
+        ('pending', '待处置'),
+        ('processing', '处置中'),
+        ('reviewing', '待复查'),
+        ('closed', '已闭环'),
+    )
+
+    granary = models.ForeignKey(Granary, on_delete=models.CASCADE,
+                                verbose_name='预警粮仓', related_name='warnings')
+    risk_assessment = models.ForeignKey(RiskAssessment, on_delete=models.SET_NULL,
+                                        verbose_name='关联风险评估', related_name='warnings',
+                                        blank=True, null=True)
+    warning_level = models.CharField('预警等级', max_length=20, choices=LEVEL_CHOICES)
+    trigger_type = models.CharField('触发方式', max_length=20, choices=TRIGGER_TYPE_CHOICES, default='auto')
+    notify_method = models.CharField('通知方式', max_length=20, choices=NOTIFY_METHOD_CHOICES, default='system')
+    warning_time = models.DateTimeField('预警时间', default=timezone.now)
+    warning_content = models.TextField('预警内容')
+    status = models.CharField('预警状态', max_length=20, choices=STATUS_CHOICES, default='pending')
+    notified_person = models.CharField('被通知人', max_length=100, blank=True, null=True)
+    is_overdue = models.BooleanField('是否超时', default=False)
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        db_table = 'warning'
+        verbose_name = '预警记录'
+        verbose_name_plural = verbose_name
+        ordering = ['-warning_time']
+
+    def __str__(self):
+        return f'{self.granary.code} {self.get_warning_level_display()} {self.warning_time}'
+
+    def clean(self):
+        if self.status == 'closed' and not self.disposal_tasks.filter(status='closed').exists():
+            pass
+
+    @staticmethod
+    def get_level_from_risk(risk_level):
+        if risk_level == 'high':
+            return 'level1'
+        elif risk_level == 'medium':
+            return 'level2'
+        else:
+            return 'level3'
+
+    def get_deadline_hours(self):
+        if self.warning_level == 'level1':
+            return 2
+        elif self.warning_level == 'level2':
+            return 8
+        else:
+            return 24
+
+    def check_overdue(self):
+        if self.status in ('closed',):
+            return False
+        deadline = self.warning_time + timedelta(hours=self.get_deadline_hours())
+        return timezone.now() > deadline
+
+
+class DisposalTask(models.Model):
+    PRIORITY_CHOICES = (
+        ('urgent', '紧急'),
+        ('high', '高'),
+        ('normal', '普通'),
+    )
+    STATUS_CHOICES = (
+        ('assigned', '已分派'),
+        ('in_progress', '处理中'),
+        ('submitted', '待复查'),
+        ('review_failed', '复查不通过'),
+        ('closed', '已闭环'),
+    )
+
+    warning = models.ForeignKey(Warning, on_delete=models.CASCADE,
+                                verbose_name='关联预警', related_name='disposal_tasks')
+    task_title = models.CharField('任务标题', max_length=200)
+    task_description = models.TextField('任务描述', blank=True, null=True)
+    assignee = models.CharField('处置负责人', max_length=100)
+    assigner = models.CharField('任务分派人', max_length=100, blank=True, null=True)
+    assigned_time = models.DateTimeField('分派时间', default=timezone.now)
+    deadline = models.DateTimeField('要求完成时间')
+    priority = models.CharField('优先级', max_length=20, choices=PRIORITY_CHOICES, default='normal')
+    status = models.CharField('任务状态', max_length=20, choices=STATUS_CHOICES, default='assigned')
+    progress = models.IntegerField('处理进度(%)', default=0)
+    disposal_measures = models.TextField('处置措施', blank=True, null=True)
+    disposal_result = models.TextField('处置结果', blank=True, null=True)
+    disposal_attachment = models.TextField('附件说明', blank=True, null=True)
+    completed_time = models.DateTimeField('实际完成时间', blank=True, null=True)
+    reviewer = models.CharField('复查人', max_length=100, blank=True, null=True)
+    review_time = models.DateTimeField('复查时间', blank=True, null=True)
+    review_opinion = models.TextField('复查意见', blank=True, null=True)
+    review_passed = models.BooleanField('复查是否通过', default=False)
+    archived_by = models.CharField('归档人', max_length=100, blank=True, null=True)
+    archived_time = models.DateTimeField('归档时间', blank=True, null=True)
+    archive_remark = models.TextField('归档备注', blank=True, null=True)
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        db_table = 'disposal_task'
+        verbose_name = '处置任务'
+        verbose_name_plural = verbose_name
+        ordering = ['-assigned_time']
+
+    def __str__(self):
+        return f'{self.task_title} - {self.assignee}'
+
+    def clean(self):
+        if self.progress is not None and (self.progress < 0 or self.progress > 100):
+            raise ValidationError({'progress': '进度必须在0-100之间'})
+        if self.deadline and self.assigned_time and self.deadline < self.assigned_time:
+            raise ValidationError({'deadline': '完成时间不能早于分派时间'})
+        if self.status == 'closed' and not self.review_passed:
+            raise ValidationError({'status': '未通过复查的任务不能闭环'})
+
+    def is_overdue(self):
+        if self.status in ('closed',):
+            return False
+        if self.completed_time:
+            return self.completed_time > self.deadline
+        return timezone.now() > self.deadline
+
+    def get_remaining_hours(self):
+        if self.status == 'closed':
+            return 0
+        now = timezone.now()
+        if now >= self.deadline:
+            return 0
+        delta = self.deadline - now
+        return round(delta.total_seconds() / 3600, 1)
+
+
+class DisposalProgressLog(models.Model):
+    task = models.ForeignKey(DisposalTask, on_delete=models.CASCADE,
+                             verbose_name='处置任务', related_name='progress_logs')
+    progress_percent = models.IntegerField('当前进度(%)')
+    progress_description = models.TextField('进度说明')
+    operator = models.CharField('操作人', max_length=100)
+    operate_time = models.DateTimeField('操作时间', default=timezone.now)
+    remark = models.TextField('备注', blank=True, null=True)
+
+    class Meta:
+        db_table = 'disposal_progress_log'
+        verbose_name = '处置进度记录'
+        verbose_name_plural = verbose_name
+        ordering = ['-operate_time']
+
+    def __str__(self):
+        return f'{self.task.task_title} - {self.progress_percent}%'
+
+
+class WarningNotifyLog(models.Model):
+    warning = models.ForeignKey(Warning, on_delete=models.CASCADE,
+                                verbose_name='预警', related_name='notify_logs')
+    notify_method = models.CharField('通知方式', max_length=20)
+    notify_target = models.CharField('通知对象', max_length=200)
+    notify_content = models.TextField('通知内容')
+    notify_time = models.DateTimeField('通知时间', default=timezone.now)
+    is_success = models.BooleanField('是否成功', default=True)
+    fail_reason = models.TextField('失败原因', blank=True, null=True)
+
+    class Meta:
+        db_table = 'warning_notify_log'
+        verbose_name = '预警通知记录'
+        verbose_name_plural = verbose_name
+        ordering = ['-notify_time']
+
+    def __str__(self):
+        return f'{self.warning} - {self.notify_method}'

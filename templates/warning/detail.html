@@ -1,0 +1,118 @@
+{% extends 'base.html' %}
+{% block title %}预警详情 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-bell-fill me-2"></i>预警详情</h3>
+    <div>
+        <a href="{% url 'warning_list' %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回列表</a>
+        {% if warning.status == 'pending' %}
+        <a href="{% url 'warning_assign_task' warning.pk %}" class="btn btn-success ms-2"><i class="bi bi-person-check me-1"></i>分派任务</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6 mb-4">
+        <div class="card stat-card">
+            <div class="card-body">
+                <h5 class="card-title mb-3"><i class="bi bi-info-circle me-2 text-primary"></i>预警信息</h5>
+                <table class="table table-borderless mb-0">
+                    <tr><th style="width:120px" class="text-muted">粮仓</th><td><a href="{% url 'granary_detail' warning.granary_id %}">{{ warning.granary.code }} - {{ warning.granary.name }}</a></td></tr>
+                    <tr><th class="text-muted">预警等级</th><td><span class="risk-badge warn-{{ warning.warning_level }}">{{ warning.get_warning_level_display }}</span></td></tr>
+                    <tr><th class="text-muted">触发方式</th><td>{{ warning.get_trigger_type_display }}</td></tr>
+                    <tr><th class="text-muted">通知方式</th><td>{{ warning.get_notify_method_display }}</td></tr>
+                    <tr><th class="text-muted">预警时间</th><td>{{ warning.warning_time|date:'Y-m-d H:i:s' }}</td></tr>
+                    <tr><th class="text-muted">限定时长</th><td>{{ warning.get_deadline_hours }} 小时内处置</td></tr>
+                    <tr><th class="text-muted">预警内容</th><td>{{ warning.warning_content }}</td></tr>
+                    <tr><th class="text-muted">被通知人</th><td>{{ warning.notified_person|default:'-' }}</td></tr>
+                    <tr><th class="text-muted">状态</th><td><span class="risk-badge status-{{ warning.status }}">{{ warning.get_status_display }}</span></td></tr>
+                    <tr><th class="text-muted">是否超时</th><td>{% if warning.is_overdue %}<span class="badge bg-danger">已超时</span>{% else %}<span class="badge bg-success">正常</span>{% endif %}</td></tr>
+                    {% if warning.risk_assessment %}
+                    <tr><th class="text-muted">关联评估</th><td><a href="{% url 'risk_detail' warning.risk_assessment_id %}">查看风险评估</a></td></tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6 mb-4">
+        <div class="card stat-card">
+            <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-list-check me-2 text-primary"></i>处置任务</h5>
+        {% if warning.status == 'pending' %}
+        <a href="{% url 'warning_assign_task' warning.pk %}" class="btn btn-sm btn-success"><i class="bi bi-plus-lg me-1"></i>分派任务</a>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>任务标题</th>
+                    <th>负责人</th>
+                    <th>状态</th>
+                    <th>进度</th>
+                    <th>优先级</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for t in tasks %}
+                <tr>
+                    <td class="small">{{ t.task_title|truncatechars:25 }}</td>
+                    <td class="small">{{ t.assignee }}</td>
+                    <td><span class="risk-badge task-{{ t.status }}">{{ t.get_status_display }}</span></td>
+                    <td>
+                        <div class="progress" style="height:6px;">
+                            <div class="progress-bar {% if t.progress >= 80 %}bg-success{% elif t.progress >= 50 %}bg-info{% else %}bg-warning{% endif %}" style="width:{{ t.progress }}%"></div>
+                        </div>
+                        <small class="text-muted">{{ t.progress }}%</small>
+                    </td>
+                    <td><span class="risk-badge priority-{{ t.priority }}">{{ t.get_priority_display }}</span></td>
+                    <td><a href="{% url 'task_detail' t.pk %}" class="btn btn-sm btn-outline-primary">详情</a></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-muted py-3">暂无处置任务</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+        </div>
+    </div>
+</div>
+
+<div class="card stat-card mb-4">
+    <div class="card-header bg-white border-bottom">
+        <h5 class="mb-0"><i class="bi bi-broadcast me-2 text-primary"></i>通知记录</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>通知时间</th>
+                    <th>通知方式</th>
+                    <th>通知对象</th>
+                    <th>通知内容</th>
+                    <th>状态</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for log in notify_logs %}
+                <tr>
+                    <td class="small">{{ log.notify_time|date:'Y-m-d H:i' }}</td>
+                    <td>{{ log.notify_method }}</td>
+                    <td>{{ log.notify_target }}</td>
+                    <td class="small" style="max-width:400px;">{{ log.notify_content }}</td>
+                    <td>{% if log.is_success %}<span class="badge bg-success">成功</span>{% else %}<span class="badge bg-danger">失败</span>{% endif %}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" class="text-center text-muted py-3">暂无通知记录</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

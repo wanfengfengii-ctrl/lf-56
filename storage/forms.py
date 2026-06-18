@@ -1,8 +1,11 @@
 from django import forms
 from django.core.exceptions import ValidationError
+from django.utils import timezone
+from datetime import timedelta
 from .models import (
     GrainType, Granary, TemperatureHumidityLog,
-    VentilationLog, PestInspection, RiskAssessment
+    VentilationLog, PestInspection, RiskAssessment,
+    Warning, DisposalTask, DisposalProgressLog
 )
 
 
@@ -187,3 +190,144 @@ class RiskProcessForm(forms.ModelForm):
         if status == 'processed' and self.instance.risk_level == 'high' and not suggestion:
             raise ValidationError({'disposal_suggestion': '高风险粮仓必须填写处置建议才能标记为已处理'})
         return cleaned_data
+
+
+class WarningCreateForm(forms.ModelForm):
+    class Meta:
+        model = Warning
+        fields = ['granary', 'warning_level', 'notify_method', 'warning_content', 'notified_person']
+        widgets = {
+            'granary': forms.Select(attrs={'class': 'form-select'}),
+            'warning_level': forms.Select(attrs={'class': 'form-select'}),
+            'notify_method': forms.Select(attrs={'class': 'form-select'}),
+            'warning_content': forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
+            'notified_person': forms.TextInput(attrs={'class': 'form-control'}),
+        }
+
+
+class DisposalTaskAssignForm(forms.ModelForm):
+    class Meta:
+        model = DisposalTask
+        fields = ['task_title', 'task_description', 'assignee', 'assigner', 'deadline', 'priority']
+        widgets = {
+            'task_title': forms.TextInput(attrs={'class': 'form-control'}),
+            'task_description': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'assignee': forms.TextInput(attrs={'class': 'form-control'}),
+            'assigner': forms.TextInput(attrs={'class': 'form-control'}),
+            'deadline': forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
+            'priority': forms.Select(attrs={'class': 'form-select'}),
+        }
+
+    def __init__(self, *args, warning=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if warning and not self.initial.get('deadline'):
+            hours = warning.get_deadline_hours()
+            default_deadline = warning.warning_time + timedelta(hours=hours)
+            self.initial['deadline'] = default_deadline.strftime('%Y-%m-%dT%H:%M')
+        if warning and not self.initial.get('priority'):
+            if warning.warning_level == 'level1':
+                self.initial['priority'] = 'urgent'
+            elif warning.warning_level == 'level2':
+                self.initial['priority'] = 'high'
+            else:
+                self.initial['priority'] = 'normal'
+
+    def clean_deadline(self):
+        deadline = self.cleaned_data.get('deadline')
+        if deadline and deadline < timezone.now():
+            raise ValidationError('要求完成时间不能早于当前时间')
+        return deadline
+
+
+class DisposalProgressForm(forms.ModelForm):
+    class Meta:
+        model = DisposalProgressLog
+        fields = ['progress_percent', 'progress_description', 'operator', 'remark']
+        widgets = {
+            'progress_percent': forms.NumberInput(attrs={'class': 'form-control', 'min': '0', 'max': '100'}),
+            'progress_description': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+            'operator': forms.TextInput(attrs={'class': 'form-control'}),
+            'remark': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        }
+
+    def clean_progress_percent(self):
+        progress = self.cleaned_data.get('progress_percent')
+        if progress is not None and (progress < 0 or progress > 100):
+            raise ValidationError('进度必须在0-100之间')
+        return progress
+
+
+class DisposalSubmitForm(forms.Form):
+    disposal_measures = forms.CharField(
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 4}),
+        label='处置措施'
+    )
+    disposal_result = forms.CharField(
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+        label='处置结果'
+    )
+    disposal_attachment = forms.CharField(
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        required=False,
+        label='附件说明'
+    )
+    operator = forms.CharField(
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        label='提交人'
+    )
+
+
+class DisposalReviewForm(forms.Form):
+    reviewer = forms.CharField(
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        label='复查人'
+    )
+    passed = forms.ChoiceField(
+        choices=[(True, '复查通过'), (False, '复查不通过')],
+        widget=forms.RadioSelect(attrs={'class': 'form-check-input'}),
+        label='复查结论'
+    )
+    opinion = forms.CharField(
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+        required=False,
+        label='复查意见'
+    )
+
+
+class DisposalArchiveForm(forms.Form):
+    archived_by = forms.CharField(
+        widget=forms.TextInput(attrs={'class': 'form-control'}),
+        label='归档人'
+    )
+    remark = forms.CharField(
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+        required=False,
+        label='归档备注'
+    )
+
+
+class WarningFilterForm(forms.Form):
+    level = forms.ChoiceField(
+        choices=[('', '全部等级')] + list(Warning.LEVEL_CHOICES),
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-select form-select-sm'})
+    )
+    status = forms.ChoiceField(
+        choices=[('', '全部状态')] + list(Warning.STATUS_CHOICES),
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-select form-select-sm'})
+    )
+    granary = forms.ModelChoiceField(
+        queryset=Granary.objects.filter(is_active=True),
+        required=False,
+        empty_label='全部粮仓',
+        widget=forms.Select(attrs={'class': 'form-select form-select-sm'})
+    )
+    start_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={'class': 'form-control form-control-sm', 'type': 'date'})
+    )
+    end_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={'class': 'form-control form-control-sm', 'type': 'date'})
+    )

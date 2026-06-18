@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% block title %}预警管理 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-bell-fill me-2"></i>预警管理</h3>
+    <div>
+        <form method="post" action="{% url 'warning_generate' %}" class="d-inline me-2">
+            {% csrf_token %}
+            <div class="input-group input-group-sm">
+                <input type="date" name="warn_date" value="{{ today|date:'Y-m-d' }}" class="form-control">
+                <button class="btn btn-outline-primary" type="submit"><i class="bi bi-magic me-1"></i>生成预警</button>
+            </div>
+        </form>
+        <a href="{% url 'warning_create' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>手动预警</a>
+        <form method="post" action="{% url 'warning_check_overdue' %}" class="d-inline ms-2">
+            {% csrf_token %}
+            <button class="btn btn-outline-warning" type="submit"><i class="bi bi-clock-history me-1"></i>检测超时</button>
+        </form>
+        <a href="{% url 'task_list' %}" class="btn btn-outline-info ms-2"><i class="bi bi-list-check me-1"></i>任务列表</a>
+    </div>
+</div>
+
+<div class="card stat-card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label small text-muted">预警等级</label>
+                {{ filter_form.level }}
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">预警状态</label>
+                {{ filter_form.status }}
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">粮仓</label>
+                {{ filter_form.granary }}
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">开始日期</label>
+                {{ filter_form.start_date }}
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted">结束日期</label>
+                {{ filter_form.end_date }}
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary btn-sm w-100"><i class="bi bi-funnel me-1"></i>筛选</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card stat-card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                <tr>
+                    <th>预警时间</th>
+                    <th>粮仓</th>
+                    <th>预警等级</th>
+                    <th>触发方式</th>
+                    <th>预警内容</th>
+                    <th>状态</th>
+                    <th>是否超时</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for w in warnings %}
+                <tr>
+                    <td class="small">{{ w.warning_time|date:'Y-m-d H:i' }}</td>
+                    <td><a href="{% url 'granary_detail' w.granary_id %}">{{ w.granary.code }}</a></td>
+                    <td><span class="risk-badge warn-{{ w.warning_level }}">{{ w.get_warning_level_display }}</span></td>
+                    <td>{{ w.get_trigger_type_display }}</td>
+                    <td class="small" style="max-width:280px;">{{ w.warning_content|truncatechars:50 }}</td>
+                    <td><span class="risk-badge status-{{ w.status }}">{{ w.get_status_display }}</span></td>
+                    <td>
+                        {% if w.is_overdue %}
+                        <span class="badge bg-danger">已超时</span>
+                        {% else %}
+                        <span class="badge bg-success">正常</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{% url 'warning_detail' w.pk %}" class="btn btn-sm btn-outline-primary">详情</a>
+                        {% if w.status == 'pending' %}
+                        <a href="{% url 'warning_assign_task' w.pk %}" class="btn btn-sm btn-outline-success">分派</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="8" class="text-center text-muted py-4">暂无预警记录</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% if is_paginated %}
+    <div class="card-footer bg-white border-top">
+        <nav>
+            <ul class="pagination pagination-sm mb-0 justify-content-center">
+                {% if page_obj.has_previous %}
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">上一页</a></li>
+                {% endif %}
+                {% for p in page_obj.paginator.page_range %}
+                {% if p == page_obj.number %}
+                <li class="page-item active"><span class="page-link">{{ p }}</span></li>
+                {% else %}
+                <li class="page-item"><a class="page-link" href="?page={{ p }}">{{ p }}</a></li>
+                {% endif %}
+                {% endfor %}
+                {% if page_obj.has_next %}
+                <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">下一页</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

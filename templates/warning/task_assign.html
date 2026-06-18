@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+{% block title %}分派处置任务 - 粮仓风险监测系统{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="page-title mb-0"><i class="bi bi-person-plus me-2"></i>分派处置任务</h3>
+    <a href="{% url 'warning_detail' warning.pk %}" class="btn btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>返回预警详情</a>
+</div>
+
+<div class="row">
+    <div class="col-md-5 mb-4">
+        <div class="card stat-card">
+            <div class="card-body">
+                <h5 class="card-title mb-3"><i class="bi bi-info-circle me-2 text-primary"></i>预警信息</h5>
+                <table class="table table-borderless mb-0">
+                    <tr><th style="width:100px" class="text-muted">粮仓</th><td>{{ warning.granary.code }} - {{ warning.granary.name }}</td></tr>
+                    <tr><th class="text-muted">预警等级</th><td><span class="risk-badge warn-{{ warning.warning_level }}">{{ warning.get_warning_level_display }}</span></td></tr>
+                    <tr><th class="text-muted">预警时间</th><td>{{ warning.warning_time|date:'Y-m-d H:i' }}</td></tr>
+                    <tr><th class="text-muted">限时</th><td class="text-danger fw-bold">{{ warning.get_deadline_hours }} 小时</td></tr>
+                    <tr><th class="text-muted">预警内容</th><td>{{ warning.warning_content }}</td></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-7 mb-4">
+        <div class="card stat-card">
+            <div class="card-body">
+                <h5 class="card-title mb-3"><i class="bi bi-clipboard-plus me-2 text-primary"></i>任务信息</h5>
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="row g-3">
+                        <div class="col-md-12">
+                            <label class="form-label">任务标题 *</label>
+                            {{ form.task_title }}
+                            {% if form.task_title.errors %}
+                            <div class="text-danger small mt-1">{{ form.task_title.errors }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label">任务描述</label>
+                            {{ form.task_description }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">处置负责人 *</label>
+                            {{ form.assignee }}
+                            {% if form.assignee.errors %}
+                            <div class="text-danger small mt-1">{{ form.assignee.errors }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">任务分派人</label>
+                            {{ form.assigner }}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">要求完成时间 *</label>
+                            {{ form.deadline }}
+                            {% if form.deadline.errors %}
+                            <div class="text-danger small mt-1">{{ form.deadline.errors }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">优先级</label>
+                            {{ form.priority }}
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-primary"><i class="bi bi-send me-1"></i>分派任务</button>
+                        <a href="{% url 'warning_detail' warning.pk %}" class="btn btn-outline-secondary ms-2">取消</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -7,6 +7,8 @@ urlpatterns = [
     path('api/risk-ranking/', views.risk_ranking_chart, name='api_risk_ranking'),
     path('api/risk-trend/', views.risk_trend_data, name='api_risk_trend'),
     path('api/temp-humidity/', views.temp_humidity_trend, name='api_temp_humidity'),
+    path('api/warning-trend/', views.warning_trend_api, name='api_warning_trend'),
+    path('api/warning-by-granary/', views.warning_by_granary_api, name='api_warning_by_granary'),
 
     path('grain-types/', views.GrainTypeListView.as_view(), name='grain_type_list'),
     path('grain-types/create/', views.GrainTypeCreateView.as_view(), name='grain_type_create'),
@@ -38,4 +40,20 @@ urlpatterns = [
     path('risks/<int:pk>/', views.RiskAssessmentDetailView.as_view(), name='risk_detail'),
     path('risks/generate/', views.generate_risk_assessments, name='risk_generate'),
     path('risks/<int:pk>/process/', views.process_risk, name='risk_process'),
+
+    path('warnings/', views.WarningListView.as_view(), name='warning_list'),
+    path('warnings/dashboard/', views.warning_dashboard, name='warning_dashboard'),
+    path('warnings/create/', views.warning_create, name='warning_create'),
+    path('warnings/<int:pk>/', views.WarningDetailView.as_view(), name='warning_detail'),
+    path('warnings/generate/', views.generate_warnings, name='warning_generate'),
+    path('warnings/check-overdue/', views.check_overdue_warnings, name='warning_check_overdue'),
+    path('warnings/<int:warning_pk>/assign-task/', views.task_assign, name='warning_assign_task'),
+
+    path('tasks/', views.TaskListView.as_view(), name='task_list'),
+    path('tasks/<int:pk>/', views.TaskDetailView.as_view(), name='task_detail'),
+    path('tasks/<int:pk>/update-progress/', views.task_update_progress, name='task_update_progress'),
+    path('tasks/<int:pk>/submit-review/', views.task_submit_review, name='task_submit_review'),
+    path('tasks/<int:pk>/review/', views.task_review, name='task_review'),
+    path('tasks/<int:pk>/redo/', views.task_redo, name='task_redo'),
+    path('tasks/<int:pk>/archive/', views.task_archive, name='task_archive'),
 ]

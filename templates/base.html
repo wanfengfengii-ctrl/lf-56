@@ -26,6 +26,22 @@
         .informal-tag { background: #e7f5ff; color: #1c7ed6; font-size: .75rem; padding: 2px 8px; border-radius: 4px; margin-left: 6px; }
         .status-pending { background: #ffe8cc; color: #d9480f; }
         .status-processed { background: #d3f9d8; color: #2b8a3e; }
+        .warn-level1 { background: #ffe3e3; color: #c92a2a; }
+        .warn-level2 { background: #fff4e6; color: #d9480f; }
+        .warn-level3 { background: #fff9db; color: #f59f00; }
+        .priority-urgent { background: #ffe3e3; color: #c92a2a; }
+        .priority-high { background: #fff4e6; color: #d9480f; }
+        .priority-normal { background: #e7f5ff; color: #1971c2; }
+        .task-assigned { background: #ffe8cc; color: #d9480f; }
+        .task-in_progress { background: #d0ebff; color: #1971c2; }
+        .task-submitted { background: #fff3bf; color: #e67700; }
+        .task-review_failed { background: #ffe3e3; color: #c92a2a; }
+        .task-closed { background: #d3f9d8; color: #2b8a3e; }
+        .progress-bar-container { background: #e9ecef; border-radius: 8px; height: 10px; overflow: hidden; }
+        .progress-bar-fill { height: 100%; border-radius: 8px; transition: width 0.3s; }
+        .timeline-item { position: relative; padding-left: 24px; padding-bottom: 16px; border-left: 2px solid #dee2e6; }
+        .timeline-item:last-child { border-left-color: transparent; }
+        .timeline-item::before { content: ''; position: absolute; left: -7px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: #1e3c72; border: 2px solid #fff; }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
@@ -58,6 +74,12 @@
                 </a>
                 <a class="nav-link {% if 'risk' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'risk_list' %}">
                     <i class="bi bi-exclamation-triangle-fill"></i>风险评估
+                </a>
+                <a class="nav-link {% if 'warning' in request.resolver_match.url_name or 'task' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'warning_list' %}">
+                    <i class="bi bi-bell-fill"></i>预警管理
+                </a>
+                <a class="nav-link {% if 'warning_dashboard' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'warning_dashboard' %}">
+                    <i class="bi bi-bar-chart-steps"></i>预警处置看板
                 </a>
             </nav>
         </div>
